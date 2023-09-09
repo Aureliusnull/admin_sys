@@ -129,6 +129,10 @@
     #define DIALOG_ADMIN_HELP (6002)
 #endif
 
+#if !defined DIALOG_ADMIN_HELP_RETURN
+    #define DIALOG_ADMIN_HELP_RETURN (6003)
+#endif
+
 static 
     Iterator: AdminPlayers<MAX_ADMINS_COUNT>,
     MySQL: dbHandle;
@@ -334,8 +338,6 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                     inputtext
             );
             SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, fmt_message);
-
-            return 1; 
         }
         case DIALOG_ADMIN_LOGIN: {
             if (!response) {
@@ -370,7 +372,6 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             }
            
             SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно авторизовались в панели администратора.");
-            return 1; 
         }
         case DIALOG_ADMIN_HELP: {
             if (!response) {
@@ -378,43 +379,41 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             }
 
             new
-                dialog_string[(20 + MAX_ADMIN_COMMAND_NAME_LENGTH + MAX_ADMIN_COMMAND_DESC_LENGTH + MAX_ADMIN_COMMAND_ARG_LENGTH) * sizeof(g_admin_command)],
+                string[(20 + MAX_ADMIN_COMMAND_NAME_LENGTH + MAX_ADMIN_COMMAND_DESC_LENGTH + MAX_ADMIN_COMMAND_ARG_LENGTH) * sizeof g_admin_command],
                 header_string[50 + (- 2 + 1) + 1];
 
-            dialog_string = "Команда\tАргументы\tОписание\n";
+            string = "Команда\tАргументы\tОписание\n";
 
-            for (new idx = 0; idx < sizeof(g_admin_command); ++idx) {
-                if (g_admin_command[idx][E_ADMIN_COMMAND_LEVEL] != listitem + 1) {
+            for (new i = 0; i < sizeof g_admin_command; ++i) {
+                if (g_admin_command[i][E_ADMIN_COMMAND_LEVEL] != listitem + 1) {
                     continue;
                 }
 
-                format(
-                        dialog_string, 
-                        sizeof(dialog_string),
-                        "%s%s\t%s\t%s\n",
-                        dialog_string,
-                        g_admin_command[idx][E_ADMIN_COMMAND_NAME],
-                        g_admin_command[idx][E_ADMIN_COMMAND_ARG],
-                        g_admin_command[idx][E_ADMIN_COMMAND_DESC]
+                format(string, sizeof string, "%s%s\t%s\t%s\n",
+                        string,
+                        g_admin_command[i][E_ADMIN_COMMAND_NAME],
+                        g_admin_command[i][E_ADMIN_COMMAND_ARG],
+                        g_admin_command[i][E_ADMIN_COMMAND_DESC]
                 );
             }
 
-            format(
-                    header_string, 
-                    sizeof(header_string),
-                    "{5D9978}Команды администратора %d уровня", 
+            format(header_string, sizeof header_string, "{5D9978}Команды администратора: {FFFFFF}%d уровня", 
                     admin_GetPlayerLevel(playerid)
             );
 
             ShowPlayerDialog(
                 playerid,
-                DIALOG_ADMIN_NONE, 
+                DIALOG_ADMIN_HELP_RETURN, 
                 DIALOG_STYLE_TABLIST_HEADERS,
                 header_string,
-                dialog_string,
-                !"Закрыть", !""
+                string,
+                !"Закрыть", !"Назад"
             );
-            return 1;
+        }
+        case DIALOG_ADMIN_HELP_RETURN: {
+            if (!response) {
+                admin_ShowPlayerHelpDialog(playerid);
+            }
         }
     }
 
@@ -598,7 +597,7 @@ stock admin_SavePlayerEx(const playerid, const column_name[], const column_value
 
 stock admin_LoadPlayerUserID(playerid)
 {
-    static const query[] = "SELECT u.id FROM users u WHERE u.name='%e' LIMIT 1";
+    static const query[] = "SELECT u.id FROM `"DB_USERS"` u WHERE u.name='%e' LIMIT 1";
 	
     new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
 
@@ -735,7 +734,7 @@ stock admin_PlayerCreateOffline(const playerid, const name[])
 {
 	static const query[] =
     "\
-    	SELECT u.name FROM `"DB_USERS"` WHERE name='%e' LIMIT 1 \
+    	SELECT u.id, u.name FROM `"DB_USERS"` u WHERE name='%e' LIMIT 1 \
     ";
 
 	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
@@ -861,15 +860,12 @@ stock admin_ShowPlayerLoginDialog(playerid)
 
 stock admin_ShowPlayerHelpDialog(const playerid) 
 {
-    new dialog_string[(31 + (- 2 + 1)) * MAX_ADMIN_LEVEL + 1];
+    new string[(12 + (- 2 + 1)) * MAX_ADMIN_LEVEL + 1];
 
-    for (new idx = 0; idx < MAX_ADMIN_LEVEL; ++idx) {
-        format(
-                dialog_string, 
-                sizeof(dialog_string), 
-                "%s{AFAFAF}%d{FFFFFF} уровень\n", 
-                dialog_string, 
-                idx + 1
+    for (new i = 0; i < MAX_ADMIN_LEVEL; ++i) {
+        format(string, sizeof string, "%s%d уровень\n", 
+                string, 
+                i + 1
         );
     }
 
@@ -878,7 +874,7 @@ stock admin_ShowPlayerHelpDialog(const playerid)
             DIALOG_ADMIN_HELP, 
             DIALOG_STYLE_LIST,
             !"{5D9978}Выбор уровня администратора",
-            dialog_string,
+            string,
             !"Выбрать", !"Отмена"
 	);
 }
@@ -1073,24 +1069,29 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Аккаунт не зарегистрирован в базе данных.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Аккаунт игрока не зарегистрирован в базе данных.");
     }
     
+    new user_id;
+    
+    cache_get_value_name_int(0, !"id", user_id);
+
     static const query[] = 
     "\
         INSERT INTO `"DB_USERS_ADMINS"` \
-        (name, level) \
+            (user_id, name, level) \
         VALUES \
-        ('%e', %d) \
+            (%d, '%e', %d) \
     ";
     
-    new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1)];
+    new fmt_query[sizeof(query) + (- 2 + 11) + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1)];
     
     mysql_format(
             dbHandle, 
             fmt_query, 
             sizeof(fmt_query), 
             query,
+            user_id,
             name,
             MIN_ADMIN_LEVEL
     );
@@ -1171,6 +1172,9 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     return 1;
 }
 
+/*  
+    commands
+*/
 
 cmd:aduty(playerid) 
 {
@@ -1198,7 +1202,7 @@ cmd:aduty(playerid)
 
 cmd:ahelp(playerid) 
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
     
@@ -1208,7 +1212,7 @@ cmd:ahelp(playerid)
 
 cmd:create_admin(playerid, params[])
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1240,7 +1244,7 @@ cmd:create_admin(playerid, params[])
 
 cmd:edit_admin(playerid, params[])
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1280,7 +1284,7 @@ cmd:edit_admin(playerid, params[])
 
 cmd:remove_admin(playerid, params[])
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1308,7 +1312,7 @@ cmd:remove_admin(playerid, params[])
 
 cmd:admin(playerid, params[])
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1333,7 +1337,7 @@ cmd:admin(playerid, params[])
 
 cmd:admins(playerid) 
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_2)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_2)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1377,7 +1381,7 @@ cmd:admins(playerid)
 
 cmd:off_admins(playerid) 
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_3)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_3)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1397,13 +1401,13 @@ cmd:off_admins(playerid)
 
 cmd:off_create_admin(playerid, params[]) 
 {
-    if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
-    new target_name[MAX_PLAYER_NAME];
+    new target_name[MAX_PLAYER_NAME_LENGTH];
 
-	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LEN "]", target_name)) {
+	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LENGTH "]", target_name)) {
 		return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"/off_create_admin: [Имя игрока]");
     }
 
@@ -1417,7 +1421,7 @@ cmd:off_create_admin(playerid, params[])
 
 cmd:off_edit_admin(playerid, params[]) 
 {
-	if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
+	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -1441,7 +1445,7 @@ cmd:off_edit_admin(playerid, params[])
 
 cmd:off_remove_admin(playerid, params[]) 
 {
-	if (!admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
+	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
     }
     
