@@ -7,6 +7,16 @@
     check libs
 */
 
+#if __Pawn >= 0x3A && defined __PawnBuild
+    #if __Pawn == 0x3A && __PawnBuild >= 2 || __Pawn > 0x3A
+        #define static_enum static enum
+    #endif
+#endif
+
+#if !defined static_enum
+    #define static_enum enum
+#endif
+
 #if !defined mysql_included || !defined cache_get_value_name
     #error "Please included <a_mysql.inc> version R40+ before include <admin_sys.inc>" 
 #endif
@@ -40,7 +50,7 @@
 #endif
 
 #if !defined HEX_COLOR_ADMIN_WARNING
-    #define HEX_COLOR_ADMIN_WARNING  0xAFAFAFFF
+    #define HEX_COLOR_ADMIN_WARNING 0xAFAFAFFF
 #endif 
 
 #if !defined SetPlayerUserID
