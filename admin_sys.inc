@@ -7,16 +7,6 @@
     check libs
 */
 
-#if __Pawn >= 0x3A && defined __PawnBuild
-    #if __Pawn == 0x3A && __PawnBuild >= 2 || __Pawn > 0x3A
-        #define static_enum static enum
-    #endif
-#endif
-
-#if !defined static_enum
-    #define static_enum enum
-#endif
-
 #if !defined mysql_included || !defined cache_get_value_name
     #error "Please included <a_mysql.inc> version R40+ before include <admin_sys.inc>" 
 #endif
@@ -26,7 +16,7 @@
 #endif
 
 #if !defined CMD
-    #warning "Please include <Pawn.CMD.inc> or <dc_cmd.inc> to correct work."
+    #error "Please include <Pawn.CMD.inc> or <dc_cmd.inc> to correct work."
 #endif
 
 /*
@@ -41,16 +31,24 @@
     #define DB_USERS "users"
 #endif
 
+#if !defined HEX_COLOR_ADMIN_DEFAULT
+	#define HEX_COLOR_ADMIN_DEFAULT 0xFFFFFFFF
+#endif
+
 #if !defined HEX_COLOR_ADMIN_CHAT
-    #define HEX_COLOR_ADMIN_CHAT 0xBA2821FF
+    #define HEX_COLOR_ADMIN_CHAT 0xFF6347AA
 #endif
 
 #if !defined HEX_COLOR_ADMIN_SUCCESS
     #define HEX_COLOR_ADMIN_SUCCESS 0x46BD38ff
 #endif
 
-#if !defined HEX_COLOR_ADMIN_WARNING
-    #define HEX_COLOR_ADMIN_WARNING 0xAFAFAFFF
+#if !defined HEX_COLOR_ADMIN_ERROR
+    #define HEX_COLOR_ADMIN_ERROR 0xBA2821FF
+#endif 
+
+#if !defined HEX_COLOR_ADMIN_NOTE 
+    #define HEX_COLOR_ADMIN_NOTE 0xFF9945FF
 #endif 
 
 #if !defined SetPlayerUserID
@@ -137,7 +135,7 @@ static
     Iterator: AdminPlayers<MAX_ADMINS_COUNT>,
     MySQL: dbHandle;
 
-static enum {
+enum {
     ADMIN_COMMAND_LEVEL_0,
     ADMIN_COMMAND_LEVEL_1,
     ADMIN_COMMAND_LEVEL_2,
@@ -147,14 +145,13 @@ static enum {
     ADMIN_COMMAND_LEVEL_6
 };
 
-static enum E_PLAYER_ADMIN_STRUCT {
+enum E_PLAYER_ADMIN_STRUCT {
     E_PLAYER_ADMIN_ID,
     E_PLAYER_ADMIN_LEVEL, 
     E_PLAYER_ADMIN_PASSWORD[MAX_ADMIN_PASSWORD_HASH_LENGTH + 1],
     E_PLAYER_ADMIN_SALT[MAX_ADMIN_PASSWORD_HASH_LENGTH + 1], 
     E_PLAYER_ADMIN_REG_IP[MAX_ADMIN_REG_IP_LENGTH], 
     E_PLAYER_ADMIN_REG_DATE[MAX_ADMIN_REG_DATE_LENGTH + 1],
-    bool: E_PLAYER_ADMIN_LOGGED,
     E_PLAYER_ADMIN_ATTEMPTS 
 };
 static g_player_admin[MAX_PLAYERS][E_PLAYER_ADMIN_STRUCT];
@@ -166,11 +163,10 @@ static const NULL_g_player_admin[E_PLAYER_ADMIN_STRUCT] = {
 	EOS,
 	EOS,
 	EOS,
-	false,
     MAX_ADMIN_LOGIN_ATTEMPTS
 };
 
-static enum E_PLAYER_DATA_STRUCT {
+enum E_PLAYER_DATA_STRUCT {
     E_PLAYER_DATA_ID,
     E_PLAYER_DATA_NAME[MAX_PLAYER_NAME + 1]
 };
@@ -181,7 +177,7 @@ static const NULL_g_player_data[E_PLAYER_DATA_STRUCT] = {
     EOS
 };
 
-static enum E_ADMIN_COMMAND_STRUCT {
+enum E_ADMIN_COMMAND_STRUCT {
     E_ADMIN_COMMAND_LEVEL,
     E_ADMIN_COMMAND_NAME[MAX_ADMIN_COMMAND_NAME_LENGTH + 1],
     E_ADMIN_COMMAND_ARG[MAX_ADMIN_COMMAND_ARG_LENGTH + 1],
@@ -194,12 +190,13 @@ static const g_admin_command[][E_ADMIN_COMMAND_STRUCT] = {
 	{ADMIN_COMMAND_LEVEL_1, "/ahelp", "Аргументы отсутствуют", "Список команд администора с подробным описанием"},
 	{ADMIN_COMMAND_LEVEL_2, "/admins", "Аргументы отсутствуют", "Список администрации в сети"},
     {ADMIN_COMMAND_LEVEL_3, "/off_admins", "Аргументы отсутствуют", "Список администрации (OFFLINE)"},
-	{ADMIN_COMMAND_LEVEL_4, "Команды отсутствуют", "Аргументы отсутствуют", "Описание отсутствует"},
+	{ADMIN_COMMAND_LEVEL_4, "/give_weapon", "ID игрока или часть имени | ID оружия | Кол-во патронов", "Выдача оружия для игрока"},
+	{ADMIN_COMMAND_LEVEL_4, "/slap", "ID игрока или часть имени | Причина", "Дать пинка игроку"},
 	{ADMIN_COMMAND_LEVEL_5, "/create_admin", "ID игрока или часть имени", "Создать нового администратора"},
 	{ADMIN_COMMAND_LEVEL_5, "/edit_admin", "ID игрока или часть имени", "Редактировать уровень администратора"},
 	{ADMIN_COMMAND_LEVEL_5, "/remove_admin", "ID игрока или часть имени", "Снять администратора"},
 	{ADMIN_COMMAND_LEVEL_6, "/off_create_admin", "Имя игрока", "Создать нового администратора (OFFLINE)"},
-	{ADMIN_COMMAND_LEVEL_6, "/off_edit_admin", "Имя игрока, Уровень", "Редактировать уровень администратора (OFFLINE)"},
+	{ADMIN_COMMAND_LEVEL_6, "/off_edit_admin", "Имя игрока | Уровень", "Редактировать уровень администратора (OFFLINE)"},
 	{ADMIN_COMMAND_LEVEL_6, "/off_remove_admin", "Имя игрока", "Снять администратора (OFFLINE)"}
 };
 
@@ -207,7 +204,7 @@ static const g_admin_command[][E_ADMIN_COMMAND_STRUCT] = {
     forwards
 */
 
-forward bool: admin_IsPlayerLogged(const playerid);
+forward bool: admin_IsPlayerLogin(const playerid);
 forward bool: admin_IsPlayerValid(const playerid);
 forward bool: admin_IsPasswordCharsValid(const string[]);
 forward bool: admin_IsPlayerPasswordEqual(password[], const expected_hash[], salt[]);
@@ -302,7 +299,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             if (!(MIN_ADMIN_PASSWORD_LENGTH <= strlen(inputtext) <= MAX_ADMIN_PASSWORD_LENGTH)) {
                 SendClientMessage(
                     playerid, 
-                    HEX_COLOR_ADMIN_WARNING, 
+                    HEX_COLOR_ADMIN_ERROR, 
                     !"Длина пароля должна быть не менее \
                     "#MIN_ADMIN_PASSWORD_LENGTH" и не более \
                     "#MAX_ADMIN_PASSWORD_LENGTH" символов."
@@ -313,7 +310,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             if (!admin_IsPasswordCharsValid(inputtext)) {
                 SendClientMessage(
                     playerid, 
-                    HEX_COLOR_ADMIN_WARNING, 
+                    HEX_COLOR_ADMIN_ERROR, 
                     !"Пароль может состоять только из латинских символов и цифр (aA-zZ, 0-9)."
                 );
                 return admin_PlayerRegisterDialog(playerid);
@@ -325,7 +322,6 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             admin_SavePlayerEx(playerid, "password", g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD]);
             admin_SavePlayerEx(playerid, "salt", g_player_admin[playerid][E_PLAYER_ADMIN_SALT]);
 
-            admin_SetPlayerLogged(playerid, true);
             Iter_Add(AdminPlayers, playerid);
 
             static const message[] = "Ваш новый пароль от панели администратора: {FFFFFF}%s";
@@ -347,7 +343,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             if (!(MIN_ADMIN_PASSWORD_LENGTH <= strlen(inputtext) <= MAX_ADMIN_PASSWORD_LENGTH)) {
                 SendClientMessage(
                     playerid, 
-                    HEX_COLOR_ADMIN_WARNING, 
+                    HEX_COLOR_ADMIN_ERROR, 
                     !"Пароль должен быть не менее \
                     "#MIN_ADMIN_PASSWORD_LENGTH" и не более \
                     "#MAX_ADMIN_PASSWORD_LENGTH" символов в длину."
@@ -357,19 +353,15 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
             if (!admin_IsPlayerPasswordEqual(inputtext, g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD], g_player_admin[playerid][E_PLAYER_ADMIN_SALT])) {
                 if (--g_player_admin[playerid][E_PLAYER_ADMIN_ATTEMPTS] <= 0) {
-                    SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Вы исчерпали все попытки для ввода пароля и были кикнуты.");
+                    SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы исчерпали все попытки для ввода пароля и были кикнуты.");
                     return Kick(playerid);
                 }
 
-                SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Пароли не совпадают. Повторите попытку.");
+                SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Пароли не совпадают. Повторите попытку.");
                 return admin_ShowPlayerLoginDialog(playerid);
             } 
 
-            if (!Iter_Contains(AdminPlayers, playerid)) {
-                admin_SetPlayerLogged(playerid, true);
-
-                Iter_Add(AdminPlayers, playerid);
-            }
+            Iter_Add(AdminPlayers, playerid);
            
             SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно авторизовались в панели администратора.");
         }
@@ -486,19 +478,9 @@ stock admin_SetPlayerSalt(const playerid, const output_string[], size = sizeof(o
     return 1;
 }
 
-stock bool: admin_IsPlayerLogged(const playerid)
+stock bool: admin_IsPlayerLogin(const playerid)
 {
-    return (g_player_admin[playerid][E_PLAYER_ADMIN_LOGGED] != NULL_g_player_admin[E_PLAYER_ADMIN_LOGGED]);
-}
-
-stock admin_GetPlayerLogged(const playerid, const bool: is_logged)
-{
-    return g_player_admin[playerid][E_PLAYER_ADMIN_LOGGED];
-}
-
-stock admin_SetPlayerLogged(const playerid, const bool: is_logged)
-{
-    g_player_admin[playerid][E_PLAYER_ADMIN_LOGGED] = is_logged;
+    return bool: (Iter_Contains(AdminPlayers, playerid));
 }
 
 stock admin_GetPlayerLoginAttempts(const playerid, const value)
@@ -665,13 +647,12 @@ stock admin_PlayerCreate(const playerid)
     );
     mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerLoadAdminID", !"d", playerid);
 
-    Iter_Add(AdminPlayers, playerid);
-
     SendClientMessage(
         playerid, 
         HEX_COLOR_ADMIN_SUCCESS, 
         !"Для регистрации пароля администратора, используйте команду - /aduty."
     );
+
     return mysql_errno() == 0;
 }
 
@@ -695,7 +676,7 @@ stock admin_PlayerUpdate(const playerid)
 
     SendClientMessage(
         playerid, 
-        HEX_COLOR_ADMIN_WARNING, 
+        HEX_COLOR_ADMIN_ERROR, 
         !"Ваш уровень администратора был изменён."
     );
 	return mysql_errno() == 0;
@@ -720,11 +701,10 @@ stock admin_PlayerRemove(const playerid)
 
     admin_ClearPlayerAdminData(playerid);
     admin_ClearPlayerData(playerid);
-    admin_SetPlayerLogged(playerid, false);
 
     SendClientMessage(
         playerid, 
-        HEX_COLOR_ADMIN_WARNING, 
+        HEX_COLOR_ADMIN_ERROR, 
         !"Вы были сняты с должности администратора."
     );
     return mysql_errno() == 0;
@@ -755,7 +735,7 @@ stock admin_PlayerEditOffline(const playerid, const name[], const level)
 {
 	static const query[] =
     "\
-    	SELECT ua.name FROM `"DB_USERS_ADMINS"` WHERE name='%e' LIMIT 1 \
+    	SELECT u.name FROM `"DB_USERS_ADMINS"` u WHERE name='%e' LIMIT 1 \
     ";
 
 	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
@@ -776,7 +756,7 @@ stock admin_PlayerRemoveOffline(const playerid, const name[])
 {
     static const query[] =
     "\
-    	SELECT ua.name FROM `"DB_USERS_ADMINS"` WHERE name='%e' LIMIT 1 \
+    	SELECT u.name FROM `"DB_USERS_ADMINS"` u WHERE name='%e' LIMIT 1 \
     ";
 
 	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
@@ -800,12 +780,10 @@ stock admin_ClearPlayerData(const playerid)
 
 stock admin_ClearPlayerAdminData(const playerid)
 {
-    if (admin_IsPlayerLogged(playerid)) {
-        g_player_admin[playerid] = NULL_g_player_admin;
+    if (admin_IsPlayerLogin(playerid)) {
+        Iter_Remove(AdminPlayers, playerid);
 
-        if (Iter_Contains(AdminPlayers, playerid)) {
-            Iter_Remove(AdminPlayers, playerid);
-        }
+        g_player_admin[playerid] = NULL_g_player_admin;
     }
 
     return 1;
@@ -827,7 +805,7 @@ stock admin_SendMessage(const color, const message[])
 
 stock admin_GetAccessCommand(const playerid, const level)
 {
-    return (admin_GetPlayerLevel(playerid) < level && !admin_IsPlayerLogged(playerid));
+    return (admin_GetPlayerLevel(playerid) < level);
 }
 
 stock admin_PlayerRegisterDialog(playerid) 
@@ -976,17 +954,15 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     cache_get_value_name(0, !"register_IP", g_player_admin[playerid][E_PLAYER_ADMIN_REG_IP], MAX_ADMIN_REG_IP_LENGTH);
     cache_get_value_name(0, !"register_date", g_player_admin[playerid][E_PLAYER_ADMIN_REG_DATE], MAX_ADMIN_REG_DATE_LENGTH);
     
-    Iter_Add(AdminPlayers, playerid);
-
     if (isnull(g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD])) {
         SendClientMessage(
             playerid, 
-            HEX_COLOR_ADMIN_WARNING, 
+            HEX_COLOR_ADMIN_ERROR, 
             !"Вы вошли как незарегистрированный администратор."
         );
         SendClientMessage(
             playerid, 
-            HEX_COLOR_ADMIN_WARNING, 
+            HEX_COLOR_ADMIN_ERROR, 
             !"Для регистрации пароля используйте - /aduty."
         );
     } else {
@@ -1069,7 +1045,7 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Аккаунт игрока не зарегистрирован в базе данных.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Аккаунт игрока не зарегистрирован в базе данных.");
     }
     
     new user_id;
@@ -1102,6 +1078,7 @@ stock admin_GetPlayerOnlineByID(const player_name[])
         HEX_COLOR_ADMIN_SUCCESS, 
         !"Вы успешно создали нового администратора в режиме (OFFLINE)."
     );
+
     return 1;
 }
 
@@ -1111,7 +1088,7 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Игрок не является активным администратором.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок не является активным администратором.");
     }
 
     static const query[] = 
@@ -1133,9 +1110,10 @@ stock admin_GetPlayerOnlineByID(const player_name[])
 
     SendClientMessage(
         playerid, 
-        HEX_COLOR_ADMIN_WARNING, 
+        HEX_COLOR_ADMIN_SUCCESS, 
         !"Вы успешно обновили уровень администратора в режиме (OFFLINE)."
     );
+
     return 1;
 }
 
@@ -1145,7 +1123,7 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Игрок не является активным администратором.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок не является активным администратором.");
     }
 
     static const query[] = 
@@ -1166,9 +1144,10 @@ stock admin_GetPlayerOnlineByID(const player_name[])
 
     SendClientMessage(
         playerid, 
-        HEX_COLOR_ADMIN_WARNING, 
+        HEX_COLOR_ADMIN_SUCCESS, 
         !"Вы успешно сняли администратора в режиме (OFFLINE)."
     );
+
     return 1;
 }
 
@@ -1179,16 +1158,16 @@ stock admin_GetPlayerOnlineByID(const player_name[])
 cmd:aduty(playerid) 
 {
     if (admin_GetPlayerLevel(playerid) == ADMIN_COMMAND_LEVEL_0) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Вы не обладаете правами администратора.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не обладаете правами администратора.");
     }
 
     if (Iter_Count(AdminPlayers) > MAX_ADMINS_COUNT) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Превышен лимит администраторов на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Превышен лимит администраторов на сервере.");
     }
 
-    if (admin_IsPlayerLogged(playerid)) {
-        admin_SetPlayerLogged(playerid, false);
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Вы вышли из панели администратора.");
+    if (admin_IsPlayerLogin(playerid)) {
+        Iter_Remove(AdminPlayers, playerid);
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы вышли из панели администратора.");
     }
 
     if (isnull(g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD])) {
@@ -1203,9 +1182,13 @@ cmd:aduty(playerid)
 cmd:ahelp(playerid) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
     }
     
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
+    }
+
     admin_ShowPlayerHelpDialog(playerid);
     return 1;
 }
@@ -1213,29 +1196,33 @@ cmd:ahelp(playerid)
 cmd:create_admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
     new targetid = INVALID_PLAYER_ID;
 
     if (sscanf(params, !"u", targetid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, "/create_admin: [ID / Часть имени]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, "Используйте: /create_admin [ID игрока / часть NickName]");
     }
 
     if (targetid == INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанного игрока нет на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанного игрока нет на сервере.");
     }
 
     if (targetid == playerid) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Вы указали свой ID.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы указали свой ID.");
     }
     
     if (admin_IsPlayerValid(targetid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанный игрок уже администратор.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок уже администратор.");
     }
 
     if (Iter_Count(AdminPlayers) > MAX_ADMINS_COUNT) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Превышен лимит администраторов на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Превышен лимит администраторов на сервере.");
     }
 
     admin_PlayerCreate(targetid);
@@ -1245,7 +1232,11 @@ cmd:create_admin(playerid, params[])
 cmd:edit_admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
     new 
@@ -1253,27 +1244,27 @@ cmd:edit_admin(playerid, params[])
         level;
 
     if (sscanf(params, !"ud", targetid, level)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, "/edit_admin: [ID / Часть имени] [Уровень]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, "Используйте: /edit_admin [ID игрока / часть NickName] [Уровень]");
     }
 
     if (targetid == INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанного игрока нет на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанного игрока нет на сервере.");
     }
 
     if (targetid == playerid) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Вы указали свой ID.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы указали свой ID.");
     }
 
 	if (!admin_IsPlayerValid(targetid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанный игрок не администратор.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок не администратор.");
     }
     
     if (!(0 <= level <= MAX_ADMIN_LEVEL)) {
-    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Некорректный уровень администратора.");
+    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Некорректный уровень администратора.");
     }
     
     if (admin_GetPlayerLevel(targetid) == level) {
-    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанный администратор такого же уровня.");
+    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный администратор такого же уровня.");
     }
     
     admin_SetPlayerLevel(playerid, level);
@@ -1285,25 +1276,29 @@ cmd:edit_admin(playerid, params[])
 cmd:remove_admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
     new targetid = INVALID_PLAYER_ID;
 
     if (sscanf(params, !"u", targetid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, "/remove_admin: [ID / Часть имени]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, "Используйте: /remove_admin [ID игрока / часть NickName]");
     }
 
     if (targetid == INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанного игрока нет на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанного игрока нет на сервере.");
     }
 
     if (targetid == playerid) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Вы указали свой ID.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы указали свой ID.");
     }
     
     if (!admin_IsPlayerValid(targetid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Указанный игрок не администратор.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок не администратор.");
     }
 
     admin_PlayerRemove(targetid);
@@ -1313,11 +1308,15 @@ cmd:remove_admin(playerid, params[])
 cmd:admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
 	if (isnull(params)) {
-		return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"/admin: [Текст]");
+		return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /admin [Текст]");
     }
 
     new string[MAX_CHATBUBBLE_LENGTH + 1];
@@ -1338,7 +1337,11 @@ cmd:admin(playerid, params[])
 cmd:admins(playerid) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_2)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
     new 
@@ -1365,7 +1368,7 @@ cmd:admins(playerid)
     );
 
     if (!Iter_Count(AdminPlayers)) {
-        strcat((dialog_string[0] = EOS, dialog_string), "{FFFFF}В данный момент нет администраторов в сети.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"В данный момент нет администраторов в сети.");
     }
 
 	ShowPlayerDialog(
@@ -1376,13 +1379,14 @@ cmd:admins(playerid)
 		dialog_string,
 		!"Закрыть", !""
 	);
+
 	return 1;
 }
 
 cmd:off_admins(playerid) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_3)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
     }
 
     mysql_tquery(
@@ -1402,17 +1406,21 @@ cmd:off_admins(playerid)
 cmd:off_create_admin(playerid, params[]) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
     new target_name[MAX_PLAYER_NAME_LENGTH];
 
 	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LENGTH "]", target_name)) {
-		return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"/off_create_admin: [Имя игрока]");
+		return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /off_create_admin [Имя игрока]");
     }
 
     if (admin_GetPlayerOnlineByID(target_name) != INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Игрок находится в сети.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок находится в сети.");
     }
 
     admin_PlayerCreateOffline(playerid, target_name);
@@ -1422,21 +1430,25 @@ cmd:off_create_admin(playerid, params[])
 cmd:off_edit_admin(playerid, params[]) 
 {
 	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
     }
 
-    new target_name[MAX_PLAYER_NAME], level;
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
+    }
 
-	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LEN "]d", target_name, level)) {
-		return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"/off_edit_admin: [Имя игрока] [Уровень]");
+    new target_name[MAX_PLAYER_NAME_LENGTH], level;
+
+	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LENGTH "]d", target_name, level)) {
+		return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /off_edit_admin [Имя игрока] [Уровень]");
     }
 
     if (!(0 <= level <= MAX_ADMIN_LEVEL)) {
-    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Некорректный уровень администратора.");
+    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Некорректный уровень администратора.");
     }
 
     if (admin_GetPlayerOnlineByID(target_name) != INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Игрок находится в сети.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок находится в сети.");
     }
 
     admin_PlayerEditOffline(playerid, target_name, level);
@@ -1446,17 +1458,21 @@ cmd:off_edit_admin(playerid, params[])
 cmd:off_remove_admin(playerid, params[]) 
 {
 	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"У Вас недостаточно прав для использования команды.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
     
-    new target_name[MAX_PLAYER_NAME];
+    new target_name[MAX_PLAYER_NAME_LENGTH];
 
-	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LEN "]", target_name)) {
-		return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"/off_remove_admin: [Имя игрока]");
+	if (sscanf(params, "s[" #MAX_PLAYER_NAME_LENGTH "]", target_name)) {
+		return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /off_remove_admin [Имя игрока]");
     }
 
     if (admin_GetPlayerOnlineByID(target_name) != INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_WARNING, !"Игрок находится в сети.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок находится в сети.");
     }
 
     admin_PlayerRemoveOffline(playerid, target_name);
