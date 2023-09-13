@@ -99,6 +99,10 @@
     #define MAX_ADMIN_LOGIN_ATTEMPTS (5)
 #endif
 
+#if !defined MAX_ADMIN_COMMAND_COUNT
+    #define MAX_ADMIN_COMMAND_COUNT (12)
+#endif
+
 #if !defined MAX_ADMIN_COMMAND_NAME_LENGTH
     #define MAX_ADMIN_COMMAND_NAME_LENGTH (20)
 #endif
@@ -131,11 +135,27 @@
     #define DIALOG_ADMIN_HELP_RETURN (6003)
 #endif
 
+#if !defined _ADMINSYS_STATIC_ENUM
+    #if defined __PawnBuild
+		#define _ADMINSYS_STATIC_ENUM static
+	#else
+		#define _ADMINSYS_STATIC_ENUM
+	#endif
+#endif
+
+/*
+    vars
+*/
+
 static 
     Iterator: AdminPlayers<MAX_ADMINS_COUNT>,
     MySQL: dbHandle;
 
-enum {
+/*
+    enums
+*/
+
+_ADMINSYS_STATIC_ENUM enum {
     ADMIN_COMMAND_LEVEL_0,
     ADMIN_COMMAND_LEVEL_1,
     ADMIN_COMMAND_LEVEL_2,
@@ -145,7 +165,7 @@ enum {
     ADMIN_COMMAND_LEVEL_6
 };
 
-enum E_PLAYER_ADMIN_STRUCT {
+_ADMINSYS_STATIC_ENUM enum E_PLAYER_ADMIN_STRUCT {
     E_PLAYER_ADMIN_ID,
     E_PLAYER_ADMIN_LEVEL, 
     E_PLAYER_ADMIN_PASSWORD[MAX_ADMIN_PASSWORD_HASH_LENGTH + 1],
@@ -166,7 +186,7 @@ static const NULL_g_player_admin[E_PLAYER_ADMIN_STRUCT] = {
     MAX_ADMIN_LOGIN_ATTEMPTS
 };
 
-enum E_PLAYER_DATA_STRUCT {
+_ADMINSYS_STATIC_ENUM enum E_PLAYER_DATA_STRUCT {
     E_PLAYER_DATA_ID,
     E_PLAYER_DATA_NAME[MAX_PLAYER_NAME + 1]
 };
@@ -177,21 +197,20 @@ static const NULL_g_player_data[E_PLAYER_DATA_STRUCT] = {
     EOS
 };
 
-enum E_ADMIN_COMMAND_STRUCT {
+_ADMINSYS_STATIC_ENUM enum E_ADMIN_COMMAND_STRUCT {
     E_ADMIN_COMMAND_LEVEL,
     E_ADMIN_COMMAND_NAME[MAX_ADMIN_COMMAND_NAME_LENGTH + 1],
     E_ADMIN_COMMAND_ARG[MAX_ADMIN_COMMAND_ARG_LENGTH + 1],
     E_ADMIN_COMMAND_DESC[MAX_ADMIN_COMMAND_DESC_LENGTH + 1]
 };
 
-static const g_admin_command[][E_ADMIN_COMMAND_STRUCT] = {
+static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = {
 	{ADMIN_COMMAND_LEVEL_1, "/admin", "Текстовое сообщение", "Написать в чат всем администраторам"},
 	{ADMIN_COMMAND_LEVEL_1, "/aduty", "Аргументы отсутствуют", "Авторизация/Регистрация в панели администратора"},
 	{ADMIN_COMMAND_LEVEL_1, "/ahelp", "Аргументы отсутствуют", "Список команд администора с подробным описанием"},
 	{ADMIN_COMMAND_LEVEL_2, "/admins", "Аргументы отсутствуют", "Список администрации в сети"},
     {ADMIN_COMMAND_LEVEL_3, "/off_admins", "Аргументы отсутствуют", "Список администрации (OFFLINE)"},
-	{ADMIN_COMMAND_LEVEL_4, "/give_weapon", "ID игрока или часть имени | ID оружия | Кол-во патронов", "Выдача оружия для игрока"},
-	{ADMIN_COMMAND_LEVEL_4, "/slap", "ID игрока или часть имени | Причина", "Дать пинка игроку"},
+	{ADMIN_COMMAND_LEVEL_4, "Команда отсутствует", "Аргументы отсутствуют", "Описание отсутствует"},
 	{ADMIN_COMMAND_LEVEL_5, "/create_admin", "ID игрока или часть имени", "Создать нового администратора"},
 	{ADMIN_COMMAND_LEVEL_5, "/edit_admin", "ID игрока или часть имени", "Редактировать уровень администратора"},
 	{ADMIN_COMMAND_LEVEL_5, "/remove_admin", "ID игрока или часть имени", "Снять администратора"},
@@ -270,9 +289,9 @@ public OnPlayerConnect(playerid)
 public OnPlayerDisconnect(playerid, reason)
 {
     admin_ClearPlayerAdminData(playerid);
-        
+
     #if defined adminsys_OnPlayerDisconnect
-        return adminsys_OnPlayerDisconnect(playerid);
+        return adminsys_OnPlayerDisconnect(playerid, reason);
     #else
         return 1;
     #endif
@@ -285,8 +304,12 @@ public OnPlayerDisconnect(playerid, reason)
 
 #define OnPlayerDisconnect adminsys_OnPlayerDisconnect
 #if defined adminsys_OnPlayerDisconnect
-    forward adminsys_OnPlayerDisconnect(playerid);
+    forward adminsys_OnPlayerDisconnect(playerid, reason);
 #endif
+
+/* 
+    hook OnDialogResponse
+*/
 
 public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 {
@@ -410,9 +433,9 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
     }
 
     #if defined adminsys_OnDialogResponse
-        return adminsys_OnDialogResponse(playerid, dialogid, response, listitem, inputtext[]);
+        return adminsys_OnDialogResponse(playerid, dialogid, response, listitem, inputtext);
     #else
-        return 1;
+        return 0;
     #endif
 }
 #if defined _ALS_OnDialogResponse
@@ -785,8 +808,6 @@ stock admin_ClearPlayerAdminData(const playerid)
 
         g_player_admin[playerid] = NULL_g_player_admin;
     }
-
-    return 1;
 }
 
 stock bool: admin_IsPlayerValid(const playerid) 
@@ -1155,7 +1176,7 @@ stock admin_GetPlayerOnlineByID(const player_name[])
     commands
 */
 
-cmd:aduty(playerid) 
+CMD:aduty(playerid) 
 {
     if (admin_GetPlayerLevel(playerid) == ADMIN_COMMAND_LEVEL_0) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не обладаете правами администратора.");
@@ -1179,7 +1200,7 @@ cmd:aduty(playerid)
     return 1;
 }
 
-cmd:ahelp(playerid) 
+CMD:ahelp(playerid) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1193,7 +1214,7 @@ cmd:ahelp(playerid)
     return 1;
 }
 
-cmd:create_admin(playerid, params[])
+CMD:create_admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1210,7 +1231,7 @@ cmd:create_admin(playerid, params[])
     }
 
     if (targetid == INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанного игрока нет на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок не подключён к серверу.");
     }
 
     if (targetid == playerid) {
@@ -1229,7 +1250,7 @@ cmd:create_admin(playerid, params[])
 	return 1;
 }
 
-cmd:edit_admin(playerid, params[])
+CMD:edit_admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1248,7 +1269,7 @@ cmd:edit_admin(playerid, params[])
     }
 
     if (targetid == INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанного игрока нет на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок не подключён к серверу.");
     }
 
     if (targetid == playerid) {
@@ -1273,7 +1294,7 @@ cmd:edit_admin(playerid, params[])
     return 1;
 }
 
-cmd:remove_admin(playerid, params[])
+CMD:remove_admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_5)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1290,7 +1311,7 @@ cmd:remove_admin(playerid, params[])
     }
 
     if (targetid == INVALID_PLAYER_ID) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанного игрока нет на сервере.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок не подключён к серверу.");
     }
 
     if (targetid == playerid) {
@@ -1305,7 +1326,7 @@ cmd:remove_admin(playerid, params[])
     return 1;
 }
 
-cmd:admin(playerid, params[])
+CMD:admin(playerid, params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1334,7 +1355,7 @@ cmd:admin(playerid, params[])
 	return 1;
 }
 
-cmd:admins(playerid) 
+CMD:admins(playerid) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_2)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1383,7 +1404,7 @@ cmd:admins(playerid)
 	return 1;
 }
 
-cmd:off_admins(playerid) 
+CMD:off_admins(playerid) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_3)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1403,7 +1424,7 @@ cmd:off_admins(playerid)
 
 #define MAX_PLAYER_NAME_LENGTH 24
 
-cmd:off_create_admin(playerid, params[]) 
+CMD:off_create_admin(playerid, params[]) 
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1427,7 +1448,7 @@ cmd:off_create_admin(playerid, params[])
     return 1;
 }
 
-cmd:off_edit_admin(playerid, params[]) 
+CMD:off_edit_admin(playerid, params[]) 
 {
 	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -1455,7 +1476,7 @@ cmd:off_edit_admin(playerid, params[])
     return 1;
 }
 
-cmd:off_remove_admin(playerid, params[]) 
+CMD:off_remove_admin(playerid, params[]) 
 {
 	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
