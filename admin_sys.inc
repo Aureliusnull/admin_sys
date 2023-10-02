@@ -3,16 +3,17 @@
 #endif
 #define _adminsys_included
 
+
 /*
     check libs
 */
 
-#if !defined mysql_included || !defined cache_get_value_name
-    #error "Please included <a_mysql.inc> version R40+ before include <admin_sys.inc>" 
+#if !defined mysql_included 
+    #error "Please included <a_mysql.inc> before include <admin_sys>" 
 #endif
 
 #if !defined _FOREACH_LOCAL_VERSION
-    #error "Please included <foreach.inc> before include <admin_sys.inc>"
+    #error "Please included <foreach.inc> before include <admin_sys>"
 #endif
 
 #if !defined CMD
@@ -2646,6 +2647,10 @@ CMD:set_weather(playerid, const params[])
     }
 
     foreach (new i : Player) {
+        if (GetPlayerInterior(i)) {
+            continue;
+        }
+        
         SetPlayerWeather(i, weatherid);
     }
 
@@ -2682,6 +2687,10 @@ CMD:set_time(playerid, const params[])
     }
 
     foreach (new i : Player) {
+        if (GetPlayerInterior(i)) {
+            continue;
+        }
+
         SetPlayerTime(i, time, 0);
     }
 
