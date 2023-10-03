@@ -24,6 +24,26 @@
     definitions
 */
 
+#define ADMINSYS_VERSION "0.5"
+
+#if defined cache_get_field_content
+    #define ADMIN_MYSQL_TAG:
+#else
+    #define ADMIN_MYSQL_TAG: MySQL:
+#endif
+
+#if defined cache_get_field_content
+    #define cache_get_value_name_float(%0,%1,%2) %2=cache_get_field_content_float(%0,%1,g_admin_sql_handle)
+#endif
+
+#if defined cache_get_field_content
+    #define cache_get_value_name_int(%0,%1,%2) %2=cache_get_field_content_int(%0,%1,g_admin_sql_handle)
+#endif
+
+#if defined cache_get_field_content
+    #define cache_get_value_name(%0,%1,%2,%3) cache_get_field_content(%0,%1,%2,g_admin_sql_handle,%3)
+#endif
+
 #if !defined _ADMINSYS_STATIC_ENUM
     #if defined __PawnBuild
 		#define _ADMINSYS_STATIC_ENUM static
@@ -197,7 +217,7 @@ _ADMINSYS_STATIC_ENUM enum E_ADMIN_COMMAND_STRUCT {
 
 static 
     Iterator: AdminPlayers<MAX_ADMINS_COUNT>,
-    MySQL: dbHandle,
+    ADMIN_MYSQL_TAG:g_admin_sql_handle,
 	Menu: g_spectate_menu,
 	Text: gtd_spectate_background,
 	PlayerText: ptd_spectate_name[MAX_PLAYERS] = { PlayerText:0xFFFF, ... },
@@ -305,17 +325,17 @@ forward OnPlayerBan(const playerid, const targetid);
 
 stock admin_SetMySQLConnectionHandle(MySQL: handle)
 {
-    dbHandle = handle;
+    g_admin_sql_handle = handle;
 }
 
 stock admin_Init()
 {
     new 
-        Cache: cache_id = mysql_query(dbHandle, !"SHOW TABLES LIKE '"DB_USERS_ADMINS"'", true),
+        Cache: cache_id = mysql_query(g_admin_sql_handle, !"SHOW TABLES LIKE '"DB_USERS_ADMINS"'", true),
         tick = GetTickCount();
 
     if (!cache_num_rows()) {
-        mysql_query(dbHandle,
+        mysql_query(g_admin_sql_handle,
             "\
                 CREATE TABLE `"DB_USERS_ADMINS"` (\
                     `id` int(11) NOT NULL AUTO_INCREMENT, \
@@ -332,7 +352,7 @@ stock admin_Init()
                ) ENGINE=InnoDB DEFAULT CHARSET=utf8; \
             ", false
        );
-        mysql_query(dbHandle,
+        mysql_query(g_admin_sql_handle,
             !"\
                 CREATE INDEX \
                     user_id \
@@ -340,7 +360,7 @@ stock admin_Init()
                     `"DB_USERS_ADMINS"`(user_id) \
             ", false
        );
-        mysql_query(dbHandle,
+        mysql_query(g_admin_sql_handle,
             !"\
                 ALTER TABLE \
                     `"DB_USERS_ADMINS"`\
@@ -372,7 +392,7 @@ stock admin_SavePlayerDataEx(const playerid, const column_name[], const column_v
     new fmt_query[sizeof(query) + (- 2 + 20) + (- 2 + MAX_ADMIN_PASSWORD_HASH_LENGTH) + (- 2 + 11)];
 
     mysql_format(
-            dbHandle, 
+            g_admin_sql_handle, 
             fmt_query, 
             sizeof(fmt_query), 
             query, 
@@ -380,7 +400,7 @@ stock admin_SavePlayerDataEx(const playerid, const column_name[], const column_v
             column_value,
             admin_GetPlayerAdminID(playerid)
    );
-    mysql_tquery(dbHandle, fmt_query, "", "");
+    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
 
     return mysql_errno() == 0;
 }
@@ -392,13 +412,13 @@ stock admin_LoadPlayerUserID(playerid)
     new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
 
     mysql_format(
-            dbHandle,
+            g_admin_sql_handle,
             fmt_query, 
             sizeof(fmt_query),
             query,
             GetPlayerNameEx(playerid)
    );
-    mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerLoadUserID", !"d", playerid);
+    mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerLoadUserID", !"d", playerid);
 
     return mysql_errno() == 0;
 }
@@ -415,13 +435,13 @@ stock admin_LoadPlayerData(const playerid)
     new fmt_query[sizeof(query) + (- 2 + 11)];
 
     mysql_format(
-            dbHandle,
+            g_admin_sql_handle,
             fmt_query, 
             sizeof(fmt_query),
             query,
             GetPlayerUserID(playerid)
    );
-    mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerLoadAdminData", !"d", playerid);
+    mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerLoadAdminData", !"d", playerid);
     
     return mysql_errno() == 0;
 }
@@ -445,7 +465,7 @@ stock admin_PlayerCreate(const playerid)
     admin_SetPlayerLevel(playerid, MIN_ADMIN_LEVEL);
 
     mysql_format(
-            dbHandle, 
+            g_admin_sql_handle, 
             fmt_query, 
             sizeof(fmt_query), 
             query,
@@ -453,7 +473,7 @@ stock admin_PlayerCreate(const playerid)
             MIN_ADMIN_LEVEL,
             ip_adress
    );
-    mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerLoadAdminID", !"d", playerid);
+    mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerLoadAdminID", !"d", playerid);
 
     SendClientMessage(
         playerid, 
@@ -480,7 +500,7 @@ stock admin_PlayerUpdate(const playerid)
             admin_GetPlayerLevel(playerid),
             admin_GetPlayerAdminID(playerid)
    );
-    mysql_tquery(dbHandle, fmt_query, "", "");
+    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
 
     SendClientMessage(
         playerid, 
@@ -506,7 +526,7 @@ stock admin_PlayerRemove(const playerid)
             query,
             admin_GetPlayerAdminID(playerid)
    );
-    mysql_tquery(dbHandle, fmt_query, "", "");
+    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
 
     admin_ClearPlayerAdminData(playerid);
     admin_ClearPlayerData(playerid);
@@ -530,13 +550,13 @@ stock admin_PlayerCreateOffline(const playerid, const name[])
 	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
 
     mysql_format(
-            dbHandle,
+            g_admin_sql_handle,
             fmt_query, 
             sizeof(fmt_query),
             query,
             name
    );
-	mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerCreateAdminOffline", !"ds", playerid, name);
+	mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerCreateAdminOffline", !"ds", playerid, name);
 	
 	return mysql_errno() == 0;
 }
@@ -551,13 +571,13 @@ stock admin_PlayerEditOffline(const playerid, const name[], const level)
 	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
 
     mysql_format(
-            dbHandle,
+            g_admin_sql_handle,
             fmt_query, 
             sizeof(fmt_query),
             query,
             name
    );
-	mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerEditAdminOffline", !"dsd", playerid, name, level);
+	mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerEditAdminOffline", !"dsd", playerid, name, level);
 	
 	return mysql_errno() == 0;
 }
@@ -572,13 +592,13 @@ stock admin_PlayerRemoveOffline(const playerid, const name[])
 	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
 
     mysql_format(
-            dbHandle,
+            g_admin_sql_handle,
             fmt_query, 
             sizeof(fmt_query),
             query,
             name
    );
-	mysql_tquery(dbHandle, fmt_query, !"@__OnPlayerRemoveAdminOffline", !"ds", playerid, name);
+	mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerRemoveAdminOffline", !"ds", playerid, name);
 
     return mysql_errno() == 0;
 }
@@ -1408,6 +1428,11 @@ static stock admin_GetPlayerOnlineByID(const player_name[])
 
 public OnGameModeInit()
 {
+#if defined cache_get_field_content
+    printf("Система администрации загружена. Версия: %s. Поддержка версии MySQL: R38 - R39", ADMINSYS_VERSION);
+#else
+    printf("Система администрации загружена. Версия: %s. Поддержка версии MySQL: R40 - R41", ADMINSYS_VERSION);
+#endif
     admin_Init();
     admin_LoadSpectateTD();
     
@@ -1822,7 +1847,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
     new fmt_query[sizeof(query) + (- 2 + 11) + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1)];
     
     mysql_format(
-            dbHandle, 
+            g_admin_sql_handle, 
             fmt_query, 
             sizeof(fmt_query), 
             query,
@@ -1830,7 +1855,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
             name,
             MIN_ADMIN_LEVEL
    );
-    mysql_tquery(dbHandle, fmt_query, "", "");
+    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
     
     SendClientMessage(
         playerid, 
@@ -1858,14 +1883,14 @@ public OnPlayerSelectedMenuRow(playerid, row)
     new fmt_query[sizeof(query) + (- 2 + 1) + (- 2 + MAX_PLAYER_NAME)];
 
     mysql_format(
-            dbHandle, 
+            g_admin_sql_handle, 
             fmt_query, 
             sizeof(fmt_query),
             query,
             level,
             name
    );
-    mysql_tquery(dbHandle, fmt_query, "", "");
+    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
 
     SendClientMessage(
         playerid, 
@@ -1893,13 +1918,13 @@ public OnPlayerSelectedMenuRow(playerid, row)
     new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
 
     mysql_format(
-            dbHandle, 
+            g_admin_sql_handle, 
             fmt_query, 
             sizeof(fmt_query),
             query,
             name
    );
-    mysql_tquery(dbHandle, fmt_query, "", "");
+    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
 
     SendClientMessage(
         playerid, 
@@ -2229,7 +2254,7 @@ CMD:off_admins(playerid)
     }
 
     mysql_tquery(
-            dbHandle, 
+            g_admin_sql_handle, 
             !"SELECT ua.name, ua.level \
             FROM `"DB_USERS_ADMINS"` ua \
             WHERE ua.level>0", 
@@ -2650,7 +2675,7 @@ CMD:set_weather(playerid, const params[])
         if (GetPlayerInterior(i)) {
             continue;
         }
-        
+
         SetPlayerWeather(i, weatherid);
     }
 
