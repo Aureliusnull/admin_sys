@@ -24,7 +24,7 @@
     definitions
 */
 
-#define ADMINSYS_VERSION "0.5"
+#define ADMINSYS_VERSION    "0.5"
 
 #if defined cache_get_field_content
     #define ADMIN_MYSQL_TAG:
@@ -101,7 +101,7 @@
 #endif
 
 #if !defined MAX_ADMINS_COUNT
-	#define MAX_ADMINS_COUNT (50)
+	#define MAX_ADMINS_COUNT (51)
 #endif
 
 #if !defined MAX_ADMIN_LEVEL
@@ -121,7 +121,7 @@
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_COUNT
-    #define MAX_ADMIN_COMMAND_COUNT (50)
+    #define MAX_ADMIN_COMMAND_COUNT (51)
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_NAME_LENGTH
@@ -162,7 +162,8 @@ _ADMINSYS_STATIC_ENUM enum {
 	DIALOG_ADMIN_LOGIN,
 	DIALOG_ADMIN_HELP,
 	DIALOG_ADMIN_HELP_RETURN,
-	DIALOG_ADMIN_SHOW_STATS,
+	DIALOG_ADMIN_PLAYER_STATS,
+	DIALOG_ADMIN_STATS,
 	DIALOG_ADMIN_OFFLINE_LIST,
 	DIALOG_ADMIN_ONLINE_LIST,
 	DIALOG_ADMIN_WEAPON_INFO,
@@ -189,14 +190,19 @@ _ADMINSYS_STATIC_ENUM enum E_PLAYER_ADMIN_STRUCT {
     E_PLAYER_ADMIN_PREFIX_COLOR[MAX_ADMIN_PREFIX_COLOR_LENGTH + 1],
     E_PLAYER_ADMIN_ATTEMPTS,
     bool: E_PLAYER_ADMIN_GODMODE,
-    E_PLAYER_ADMIN_WARN,
+    E_PLAYER_ADMIN_WARNS,
     E_PLAYER_ADMIN_SPECTATE_ID,
     bool: E_PLAYER_ADMIN_IS_SPECTATE,
     E_PLAYER_ADMIN_INTERIOR,
     E_PLAYER_ADMIN_WORLD_ID,
     Float: E_PLAYER_ADMIN_POS_X,
     Float: E_PLAYER_ADMIN_POS_Y,
-    Float: E_PLAYER_ADMIN_POS_Z
+    Float: E_PLAYER_ADMIN_POS_Z,
+    E_PLAYER_ADMIN_STAT_ONLINE,
+    E_PLAYER_ADMIN_STAT_WARN,
+    E_PLAYER_ADMIN_STAT_KICK,
+    E_PLAYER_ADMIN_STAT_MUTE,
+    E_PLAYER_ADMIN_STAT_BAN
 };
 
 _ADMINSYS_STATIC_ENUM enum E_PLAYER_DATA_STRUCT {
@@ -244,7 +250,12 @@ static const
     0,
     0.0,
     0.0,
-    0.0
+    0.0,
+    0,
+    0,
+    0,
+    0,
+    0
 },
     NULL_g_player_data[E_PLAYER_DATA_STRUCT] = {
     0,
@@ -301,7 +312,8 @@ static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = 
     {ADMIN_COMMAND_LEVEL_6, "/dveh", "ID транспорта", "Удалить транспорт"},
     {ADMIN_COMMAND_LEVEL_6, "/set_prefix", "ID игрока / часть NickName | Наименование", "Установить префикс администратору"},
     {ADMIN_COMMAND_LEVEL_6, "/prefix_color", "ID игрока / часть NickName | Цвет", "Изменить цвет префикса администратору"},
-    {ADMIN_COMMAND_LEVEL_6, "/ban", "ID игрока / часть NickName | Причина", "Заблокировать аккаунт игрока"}
+    {ADMIN_COMMAND_LEVEL_6, "/ban", "ID игрока / часть NickName | Причина", "Заблокировать аккаунт игрока"},
+    {ADMIN_COMMAND_LEVEL_6, "/adminstats", "ID игрока / часть NickName", "Посмотреть статистику администратора"}
 };
 
 /*  
@@ -348,6 +360,11 @@ stock admin_Init()
                     `reg_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     `prefix_name` varchar(32) NOT NULL, \
                     `prefix_color` varchar(8) NOT NULL, \
+                    `stat_online` int(11) NOT NULL, \
+                    `stat_kick` int(11) NOT NULL, \
+                    `stat_ban` int(11) NOT NULL, \
+                    `stat_warn` int(11) NOT NULL, \
+                    `stat_mute` int(11) NOT NULL, \
                     PRIMARY KEY (`id`) \
                ) ENGINE=InnoDB DEFAULT CHARSET=utf8; \
             ", false
@@ -1057,12 +1074,12 @@ stock admin_SetPlayerGodMode(const playerid, const bool: value)
 
 stock admin_GetPlayerWarn(const playerid)
 {
-    return g_player_admin[playerid][E_PLAYER_ADMIN_WARN];
+    return g_player_admin[playerid][E_PLAYER_ADMIN_WARNS];
 }
 
 stock admin_SetPlayerWarn(const playerid, const bool: value)
 {
-    g_player_admin[playerid][E_PLAYER_ADMIN_WARN] = value;
+    g_player_admin[playerid][E_PLAYER_ADMIN_WARNS] = value;
 }
 
 stock admin_GetPlayerSpectateID(const playerid)
@@ -1429,13 +1446,15 @@ static stock admin_GetPlayerOnlineByID(const player_name[])
 public OnGameModeInit()
 {
 #if defined cache_get_field_content
-    printf("Система администрации загружена. Версия: %s. Поддержка версии MySQL: R38 - R39", ADMINSYS_VERSION);
+    printf("Система администрации загружена. Версия: %s. Поддержка версий MySQL: R38 - R39", ADMINSYS_VERSION);
 #else
-    printf("Система администрации загружена. Версия: %s. Поддержка версии MySQL: R40 - R41", ADMINSYS_VERSION);
+    printf("Система администрации загружена. Версия: %s. Поддержка версий MySQL: R40 - R41", ADMINSYS_VERSION);
 #endif
     admin_Init();
     admin_LoadSpectateTD();
     
+    SetTimer(!"@__OneHourUpdateTime", 360_0000, false);
+
     #if defined adminsys_OnGameModeInit
         return adminsys_OnGameModeInit();
     #else
@@ -1714,7 +1733,12 @@ public OnPlayerSelectedMenuRow(playerid, row)
 
     cache_get_value_name_int(0, !"id", g_player_admin[playerid][E_PLAYER_ADMIN_ID]);
     cache_get_value_name_int(0, !"level", g_player_admin[playerid][E_PLAYER_ADMIN_LEVEL]);
-    
+    cache_get_value_name_int(0, !"stat_online", g_player_admin[playerid][E_PLAYER_ADMIN_STAT_ONLINE]);
+    cache_get_value_name_int(0, !"stat_kick", g_player_admin[playerid][E_PLAYER_ADMIN_STAT_KICK]);
+    cache_get_value_name_int(0, !"stat_ban", g_player_admin[playerid][E_PLAYER_ADMIN_STAT_BAN]);
+    cache_get_value_name_int(0, !"stat_warn", g_player_admin[playerid][E_PLAYER_ADMIN_STAT_WARN]);
+    cache_get_value_name_int(0, !"stat_mute", g_player_admin[playerid][E_PLAYER_ADMIN_STAT_MUTE]);
+
     cache_get_value_name(0, !"password", g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD], MAX_ADMIN_PASSWORD_HASH_LENGTH + 1);
     cache_get_value_name(0, !"salt", g_player_admin[playerid][E_PLAYER_ADMIN_SALT], MAX_ADMIN_PASSWORD_HASH_LENGTH + 1);
     cache_get_value_name(0, !"prefix_name", g_player_admin[playerid][E_PLAYER_ADMIN_PREFIX], MAX_ADMIN_PREFIX_LENGTH + 1);
@@ -2001,6 +2025,24 @@ public OnPlayerSelectedMenuRow(playerid, row)
 @__FixPlayerKickWithDelay(playerid)
 {
     Kick(playerid);
+
+    return 1;
+}
+
+@__OneHourUpdateTime();
+@__OneHourUpdateTime()
+{
+    foreach (new i : AdminPlayers) {
+        if (!admin_IsPlayerLogin(i)) {
+            continue;
+        }
+
+        g_player_admin[i][E_PLAYER_ADMIN_STAT_ONLINE]++;
+
+        admin_SavePlayerDataEx(i, !"stat_online", g_player_admin[i][E_PLAYER_ADMIN_STAT_KICK]);
+    }
+
+    SetTimer(!"@__OneHourUpdateTime", 360_0000, false);
 
     return 1;
 }
@@ -3551,7 +3593,7 @@ CMD:show_stats(playerid, const params[])
 #if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
     ShowPlayerDialog(
         playerid, 
-        DIALOG_ADMIN_SHOW_STATS, 
+        DIALOG_ADMIN_PLAYER_STATS, 
         DIALOG_STYLE_MSGBOX,
         header_string,
         string,
@@ -3567,7 +3609,7 @@ CMD:show_stats(playerid, const params[])
 #elseif defined _TDW_DIALOG_INC_
     OpenDialog(
         playerid, 
-        "DIALOG_ADMIN_SHOW_STATS", 
+        "DIALOG_ADMIN_PLAYER_STATS", 
         DIALOG_STYLE_MSGBOX,
         header_string,
         string,
@@ -3831,6 +3873,10 @@ cmd:kick(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок является администратором.");
     }
 
+    g_player_admin[playerid][E_PLAYER_ADMIN_STAT_KICK]++;
+    
+    admin_SavePlayerDataEx(playerid, !"stat_kick", g_player_admin[playerid][E_PLAYER_ADMIN_STAT_KICK]);
+
     new string[54 + (- 2 + MAX_PLAYER_NAME) * 2 + (- 2 + 3) * 2 + (- 2 + 128) + 1];
 
     format(string, sizeof string, "Администратор %s[%d] кикнул игрока %s[%d]. Причина: %s",
@@ -3979,7 +4025,7 @@ cmd:warn(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок является администратором.");
     }
 
-    g_player_admin[targetid][E_PLAYER_ADMIN_WARN]++;
+    g_player_admin[targetid][E_PLAYER_ADMIN_WARNS]++;
 
     new string[68 + (- 2 + MAX_PLAYER_NAME) * 2 + (- 2 + 3) * 2 + (- 2 + 128) + 1];
 
@@ -4000,7 +4046,7 @@ cmd:warn(playerid, const params[])
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
     CallRemoteFunction(!"OnPlayerWarn", !"ddd", 
-                        targetid, playerid, g_player_admin[targetid][E_PLAYER_ADMIN_WARN]
+                        targetid, playerid, g_player_admin[targetid][E_PLAYER_ADMIN_WARNS]
    );
 
     return 1;
@@ -4030,7 +4076,7 @@ cmd:unwarn(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы указали свой ID.");
     }
 
-    g_player_admin[targetid][E_PLAYER_ADMIN_WARN]--;
+    g_player_admin[targetid][E_PLAYER_ADMIN_WARNS]--;
 
     new string[55 + (- 2 + MAX_PLAYER_NAME) * 2 + (- 2 + 3) * 2 + 1];
 
@@ -4063,7 +4109,7 @@ cmd:ban(playerid, const params[])
 
     new targetid = INVALID_PLAYER_ID;
 
-    if (sscanf(params, !"us[128]", targetid)) {
+    if (sscanf(params, !"us[128]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /ban [ID игрока / часть NickName] [Причина]");
     }
 
@@ -4087,7 +4133,7 @@ cmd:ban(playerid, const params[])
             GetPlayerNameEx(targetid),
             targetid,
             params
-   );
+    );
     SendClientMessageToAll(HEX_COLOR_ADMIN_CHAT, string);
 
     format(string, sizeof string, "Администратор %s[%d] заблокировал Вас. Причина: %s",
@@ -4099,6 +4145,78 @@ cmd:ban(playerid, const params[])
 
     CallRemoteFunction(!"OnPlayerBan", !"dd", targetid, playerid);
 
+    return 1;
+}
+
+cmd:adminstats(playerid, const params[])
+{
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
+    }
+
+    new targetid = INVALID_PLAYER_ID;
+
+    if (sscanf(params, !"u", targetid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /adminstats [ID игрока / часть NickName]");
+    }
+
+    if (targetid == INVALID_PLAYER_ID) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок не подключён к серверу.");
+    }
+
+    new 
+        dialog_string[220 + (- 2 + 3) * 5 + 1],
+        header_string[41 + (- 2 + MAX_PLAYER_NAME) + 1];
+
+    format(header_string, sizeof header_string, "{FFFFFF}Статистика администратора: {B22222}%s[%d]",
+        GetPlayerNameEx(targetid),
+        targetid
+    );
+
+    format(dialog_string, sizeof dialog_string, "\
+        {FFFFFF}Отыграно часов: {B83434}[%d ч.]{FFFFFF}\n\
+        Заблокировал: {B83434}[%d раз]{FFFFFF}\n\
+        Кикнул: {B83434}[%d раз]{FFFFFF}\n\
+        Заварнил: {B83434}[%d раз]{FFFFFF}\n\
+        Заткнул: {B83434}[%d раз]\
+        ",
+        g_player_admin[playerid][E_PLAYER_ADMIN_STAT_ONLINE],
+        g_player_admin[playerid][E_PLAYER_ADMIN_STAT_BAN],
+        g_player_admin[playerid][E_PLAYER_ADMIN_STAT_KICK],
+        g_player_admin[playerid][E_PLAYER_ADMIN_STAT_WARN],
+        g_player_admin[playerid][E_PLAYER_ADMIN_STAT_MUTE]
+    );
+
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid, 
+        DIALOG_ADMIN_STATS, 
+        DIALOG_STYLE_MSGBOX,
+        header_string,
+        dialog_string,
+        !"Закрыть", !""
+   );
+#elseif defined _mdialog_included
+    Dialog_Message(
+        playerid, 
+        header_string,
+        dialog_string,
+        !"Закрыть"
+   );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid, 
+        "DIALOG_ADMIN_STATS", 
+        DIALOG_STYLE_MSGBOX,
+        header_string,
+        dialog_string,
+        !"Закрыть", !""
+   );
+#endif
     return 1;
 }
 
