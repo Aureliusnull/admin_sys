@@ -24,7 +24,7 @@
     definitions
 */
 
-#define ADMINSYS_VERSION    "0.5"
+#define ADMINSYS_VERSION    "0.6"
 
 #if defined cache_get_field_content
     #define ADMIN_MYSQL_TAG:
@@ -76,10 +76,6 @@
     #define HEX_COLOR_ADMIN_ERROR 0xBA2821FF
 #endif 
 
-#if !defined HEX_COLOR_ADMIN_NOTE 
-    #define HEX_COLOR_ADMIN_NOTE 0xFF9945FF
-#endif 
-
 #if !defined SetPlayerUserID
     #define SetPlayerUserID(%0,%1) g_player_data[%0][E_PLAYER_DATA_ID] = %1
 #endif
@@ -101,39 +97,39 @@
 #endif
 
 #if !defined MAX_ADMINS_COUNT
-	#define MAX_ADMINS_COUNT (51)
+	#define MAX_ADMINS_COUNT 50
 #endif
 
 #if !defined MAX_ADMIN_LEVEL
-	#define MAX_ADMIN_LEVEL (6)
+	#define MAX_ADMIN_LEVEL 6
 #endif
 
 #if !defined MIN_ADMIN_LEVEL
-	#define MIN_ADMIN_LEVEL (1)
+	#define MIN_ADMIN_LEVEL 1
 #endif
 
 #if !defined MAX_ADMIN_PASSWORD_HASH_LENGTH
-    #define MAX_ADMIN_PASSWORD_HASH_LENGTH (64)
+    #define MAX_ADMIN_PASSWORD_HASH_LENGTH 64
 #endif
 
 #if !defined MAX_ADMIN_LOGIN_ATTEMPTS
-    #define MAX_ADMIN_LOGIN_ATTEMPTS (5)
+    #define MAX_ADMIN_LOGIN_ATTEMPTS 5
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_COUNT
-    #define MAX_ADMIN_COMMAND_COUNT (51)
+    #define MAX_ADMIN_COMMAND_COUNT 52
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_NAME_LENGTH
-    #define MAX_ADMIN_COMMAND_NAME_LENGTH (20)
+    #define MAX_ADMIN_COMMAND_NAME_LENGTH 20
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_DESC_LENGTH
-    #define MAX_ADMIN_COMMAND_DESC_LENGTH (60)
+    #define MAX_ADMIN_COMMAND_DESC_LENGTH 60
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_ARG_LENGTH
-    #define MAX_ADMIN_COMMAND_ARG_LENGTH (60)
+    #define MAX_ADMIN_COMMAND_ARG_LENGTH 60
 #endif
 
 #if !defined MAX_ADMIN_PREFIX_LENGTH
@@ -167,7 +163,20 @@ _ADMINSYS_STATIC_ENUM enum {
 	DIALOG_ADMIN_OFFLINE_LIST,
 	DIALOG_ADMIN_ONLINE_LIST,
 	DIALOG_ADMIN_WEAPON_INFO,
-    DIALOG_ADMIN_GODMODE
+    DIALOG_ADMIN_GODMODE,
+    DIALOG_ADMIN_TAB_PANEL,
+    DIALOG_ADMIN_KICK,
+    DIALOG_ADMIN_MUTE_TIME,
+    DIALOG_ADMIN_MUTE,
+    DIALOG_ADMIN_BAN,
+    DIALOG_ADMIN_WARN,
+    DIALOG_ADMIN_SET_SKIN,
+    DIALOG_ADMIN_SET_HEALTH,
+    DIALOG_ADMIN_SET_ARMOUR,
+    DIALOG_ADMIN_SET_MONEY,
+    DIALOG_ADMIN_SET_SCORE,
+    DIALOG_ADMIN_SET_VW,
+    DIALOG_ADMIN_SET_INT
 }
 #endif
 
@@ -202,7 +211,8 @@ _ADMINSYS_STATIC_ENUM enum E_PLAYER_ADMIN_STRUCT {
     E_PLAYER_ADMIN_STAT_WARN,
     E_PLAYER_ADMIN_STAT_KICK,
     E_PLAYER_ADMIN_STAT_MUTE,
-    E_PLAYER_ADMIN_STAT_BAN
+    E_PLAYER_ADMIN_STAT_BAN,
+    E_PLAYER_ADMIN_TAB_PANEL
 };
 
 _ADMINSYS_STATIC_ENUM enum E_PLAYER_DATA_STRUCT {
@@ -227,7 +237,8 @@ static
 	Menu: g_spectate_menu,
 	Text: gtd_spectate_background,
 	PlayerText: ptd_spectate_name[MAX_PLAYERS] = { PlayerText:0xFFFF, ... },
-	PlayerText: ptd_spectate_info[MAX_PLAYERS] = { PlayerText:0xFFFF, ... };
+	PlayerText: ptd_spectate_info[MAX_PLAYERS] = { PlayerText:0xFFFF, ... },
+    bool: g_is_admin_map_tp_enable;
 
 static 
     g_player_admin[MAX_PLAYERS][E_PLAYER_ADMIN_STRUCT],
@@ -255,11 +266,12 @@ static const
     0,
     0,
     0,
-    0
+    0,
+    INVALID_PLAYER_ID
 },
     NULL_g_player_data[E_PLAYER_DATA_STRUCT] = {
     0,
-    EOS
+    EOS,
 };
 
 static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = {
@@ -268,7 +280,8 @@ static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = 
 	{ADMIN_COMMAND_LEVEL_1, "/ahelp", "Аргументы отсутствуют", "Список команд администора с подробным описанием"},
     {ADMIN_COMMAND_LEVEL_1, "/answer", "ID игрока / часть NickName | Текст", "Ответить игроку"},
     {ADMIN_COMMAND_LEVEL_1, "/eject", "ID игрока / часть NickName", "Высадить игрока из транспорта"},
-    {ADMIN_COMMAND_LEVEL_1, "/show_stats", "ID игрока / часть NickName", "Показать статистику игрока"},
+    {ADMIN_COMMAND_LEVEL_2, "/show_stats", "ID игрока / часть NickName", "Показать статистику игрока"},
+	{ADMIN_COMMAND_LEVEL_2, "/slap", "ID игрока / часть NickName", "Дать пинка игроку"},
 	{ADMIN_COMMAND_LEVEL_2, "/admins", "Аргументы отсутствуют", "Список администрации в сети"},
 	{ADMIN_COMMAND_LEVEL_2, "/goto", "ID игрока / часть NickName", "Телепортироваться к игроку"},
     {ADMIN_COMMAND_LEVEL_2, "/asay", "Текст", "Написать в общий чат"},
@@ -290,9 +303,8 @@ static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = 
     {ADMIN_COMMAND_LEVEL_3, "/gm_test", "ID игрока / часть NickName", "Проверка на бесконечное здоровье"},
     {ADMIN_COMMAND_LEVEL_3, "/unwarn", "ID игрока / часть NickName", "Cнять с игрока предупреждение"},
 	{ADMIN_COMMAND_LEVEL_4, "/give_weapon", "ID игрока / часть NickName | ID оружия | Кол-во патронов", "Выдача оружия для игрока"},
-	{ADMIN_COMMAND_LEVEL_4, "/slap", "ID игрока / часть NickName | Причина", "Дать пинка игроку"},
-	{ADMIN_COMMAND_LEVEL_4, "/setint", "ID игрока / часть NickName | Интерьер", "Установить игроку интерьер"},
-	{ADMIN_COMMAND_LEVEL_4, "/setvw", "ID игрока / часть NickName | Виртуальный мир", "Установить игроку виртуальный мир"},
+	{ADMIN_COMMAND_LEVEL_4, "/set_int", "ID игрока / часть NickName | Интерьер", "Установить игроку интерьер"},
+	{ADMIN_COMMAND_LEVEL_4, "/set_vw", "ID игрока / часть NickName | Виртуальный мир", "Установить игроку виртуальный мир"},
     {ADMIN_COMMAND_LEVEL_4, "/weapon", "ID игрока / часть NickName", "Посмотреть информацию об оружии игрока"},
     {ADMIN_COMMAND_LEVEL_4, "/repair_veh", "ID транспорта", "Отремонтировать транспорт"},
     {ADMIN_COMMAND_LEVEL_4, "/set_skin", "ID игрока / часть NickName | ID скина", "Установить скин игроку"},
@@ -313,7 +325,8 @@ static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = 
     {ADMIN_COMMAND_LEVEL_6, "/set_prefix", "ID игрока / часть NickName | Наименование", "Установить префикс администратору"},
     {ADMIN_COMMAND_LEVEL_6, "/prefix_color", "ID игрока / часть NickName | Цвет", "Изменить цвет префикса администратору"},
     {ADMIN_COMMAND_LEVEL_6, "/ban", "ID игрока / часть NickName | Причина", "Заблокировать аккаунт игрока"},
-    {ADMIN_COMMAND_LEVEL_6, "/adminstats", "ID игрока / часть NickName", "Посмотреть статистику администратора"}
+    {ADMIN_COMMAND_LEVEL_6, "/admin_stats", "ID игрока / часть NickName", "Посмотреть статистику администратора"},
+    {ADMIN_COMMAND_LEVEL_6, "/admin_tp", "Аргументы отсутствуют", "Включить/выключить телепорт по метке на карте"}
 };
 
 /*  
@@ -335,12 +348,17 @@ forward OnPlayerBan(const playerid, const targetid);
     functions
 */
 
+stock admin_GetMySQLConnectionHandle()
+{
+    return g_admin_sql_handle;
+}
+
 stock admin_SetMySQLConnectionHandle(MySQL: handle)
 {
     g_admin_sql_handle = handle;
 }
 
-stock admin_Init()
+static stock admin_Init()
 {
     new 
         Cache: cache_id = mysql_query(g_admin_sql_handle, !"SHOW TABLES LIKE '"DB_USERS_ADMINS"'", true),
@@ -391,15 +409,16 @@ stock admin_Init()
             ", false
        );
 
-        printf("[Debug]: таблица `"DB_USERS_ADMINS"` инициализирована за %d мс.", GetTickCount() - tick);
+        printf("[Debug]: таблица `"DB_USERS_ADMINS"` инициализирована за %d мс.", 
+            GetTickCount() - tick
+        );
     } 
-
     cache_delete(cache_id);
 
     return mysql_errno() == 0;
 }
 
-stock admin_SavePlayerDataEx(const playerid, const column_name[], const column_value[])
+static stock admin_SavePlayerDataEx(const playerid, const column_name[], const column_value[])
 {
     static const query[] = 
     "\
@@ -422,7 +441,7 @@ stock admin_SavePlayerDataEx(const playerid, const column_name[], const column_v
     return mysql_errno() == 0;
 }
 
-stock admin_LoadPlayerUserID(playerid)
+static stock admin_LoadPlayerUserID(playerid)
 {
     static const query[] = "SELECT u.id FROM `"DB_USERS"` u WHERE u.name='%e' LIMIT 1";
 	
@@ -440,7 +459,7 @@ stock admin_LoadPlayerUserID(playerid)
     return mysql_errno() == 0;
 }
 
-stock admin_LoadPlayerData(const playerid)
+static stock admin_LoadPlayerData(const playerid)
 {
 	static const query[] = 
 	"\
@@ -463,7 +482,7 @@ stock admin_LoadPlayerData(const playerid)
     return mysql_errno() == 0;
 }
 
-stock admin_PlayerCreate(const playerid)
+static stock admin_PlayerCreate(const playerid)
 {
     static const query[] = 
     "\
@@ -501,7 +520,7 @@ stock admin_PlayerCreate(const playerid)
     return mysql_errno() == 0;
 }
 
-stock admin_PlayerUpdate(const playerid)
+static stock admin_PlayerUpdate(const playerid)
 {
 	static const query[] = 
     "\
@@ -528,7 +547,7 @@ stock admin_PlayerUpdate(const playerid)
 	return mysql_errno() == 0;
 }
 
-stock admin_PlayerRemove(const playerid)
+static stock admin_PlayerRemove(const playerid)
 {
     static const query[] = 
     "\
@@ -557,7 +576,7 @@ stock admin_PlayerRemove(const playerid)
     return mysql_errno() == 0;
 }
 
-stock admin_PlayerCreateOffline(const playerid, const name[])
+static stock admin_PlayerCreateOffline(const playerid, const name[])
 {
 	static const query[] =
     "\
@@ -578,7 +597,7 @@ stock admin_PlayerCreateOffline(const playerid, const name[])
 	return mysql_errno() == 0;
 }
 
-stock admin_PlayerEditOffline(const playerid, const name[], const level)
+static stock admin_PlayerEditOffline(const playerid, const name[], const level)
 {
 	static const query[] =
     "\
@@ -599,7 +618,7 @@ stock admin_PlayerEditOffline(const playerid, const name[], const level)
 	return mysql_errno() == 0;
 }
 
-stock admin_PlayerRemoveOffline(const playerid, const name[])
+static stock admin_PlayerRemoveOffline(const playerid, const name[])
 {
     static const query[] =
     "\
@@ -620,12 +639,12 @@ stock admin_PlayerRemoveOffline(const playerid, const name[])
     return mysql_errno() == 0;
 }
 
-stock admin_ClearPlayerData(const playerid)
+static stock admin_ClearPlayerData(const playerid)
 {
     g_player_data[playerid] = NULL_g_player_data;
 }
 
-stock admin_ClearPlayerAdminData(const playerid)
+static stock admin_ClearPlayerAdminData(const playerid)
 {
     if (admin_IsPlayerLogin(playerid)) {
         Iter_Remove(AdminPlayers, playerid);
@@ -633,29 +652,29 @@ stock admin_ClearPlayerAdminData(const playerid)
         g_player_admin[playerid] = NULL_g_player_admin;
     }
 
-    return 1;
+    return true;
 }
 
-stock bool: admin_IsPlayerValid(const playerid) 
+static stock bool: admin_IsPlayerValid(const playerid) 
 {
     return (g_player_admin[playerid][E_PLAYER_ADMIN_LEVEL] != NULL_g_player_admin[E_PLAYER_ADMIN_LEVEL]);
 }
 
-stock admin_SendMessage(const color, const message[])
+static stock admin_SendMessage(const color, const message[])
 {
     foreach (new idx : AdminPlayers) {
         SendClientMessage(idx, color, message);
     }
 
-    return 1;
+    return true;
 }
 
-stock admin_GetAccessCommand(const playerid, const level)
+static stock admin_GetAccessCommand(const playerid, const level)
 {
     return (admin_GetPlayerLevel(playerid) < level);
 }
 
-stock admin_RegisterDialog(const playerid) 
+static stock admin_RegisterDialog(const playerid) 
 {
 #if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
     ShowPlayerDialog(
@@ -697,15 +716,15 @@ stock admin_RegisterDialog(const playerid)
         !"Далее", !"Отмена"
    );
 #endif
-    return 1;
+    return true;
 }
 
-stock admin_RegisterDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+static stock admin_RegisterDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
 {
     #pragma unused listitem, dialogid
 
     if (!response) {
-        return 0;
+        return true;
     }
 
     if (!(MIN_ADMIN_PASSWORD_LENGTH <= strlen(inputtext) <= MAX_ADMIN_PASSWORD_LENGTH)) {
@@ -717,7 +736,7 @@ stock admin_RegisterDialogResponse(playerid, dialogid = -1, response, listitem, 
             "#MAX_ADMIN_PASSWORD_LENGTH" символов."
        );
         admin_RegisterDialog(playerid);
-        return 1;
+        return true;
     }
 
     if (!admin_IsPasswordCharsValid(inputtext)) {
@@ -725,9 +744,9 @@ stock admin_RegisterDialogResponse(playerid, dialogid = -1, response, listitem, 
             playerid, 
             HEX_COLOR_ADMIN_ERROR, 
             !"Пароль может состоять только из латинских символов и цифр (aA-zZ, 0-9)."
-       );
+        );
         admin_RegisterDialog(playerid);
-        return 1;
+        return true;
     }
     
     admin_GeneratePlayerPassword(playerid, inputtext);
@@ -745,10 +764,10 @@ stock admin_RegisterDialogResponse(playerid, dialogid = -1, response, listitem, 
    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
-stock admin_LoginDialog(const playerid) 
+static stock admin_LoginDialog(const playerid) 
 {
 #if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
     ShowPlayerDialog(
@@ -778,15 +797,15 @@ stock admin_LoginDialog(const playerid)
         !"Далее", !"Отмена"
    );
 #endif
-    return 1;
+    return true;
 }
 
-stock admin_LoginDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+static stock admin_LoginDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
 {
     #pragma unused listitem, dialogid
     
     if (!response) {
-        return 0;
+        return true;
     }
 
     if (!(MIN_ADMIN_PASSWORD_LENGTH <= strlen(inputtext) <= MAX_ADMIN_PASSWORD_LENGTH)) {
@@ -799,30 +818,30 @@ stock admin_LoginDialogResponse(playerid, dialogid = -1, response, listitem, inp
        );
         admin_LoginDialog(playerid);
 
-        return 1;
+        return true;
     }
 
     if (!admin_IsPlayerPasswordEqual(inputtext, g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD], g_player_admin[playerid][E_PLAYER_ADMIN_SALT])) {
         if (--g_player_admin[playerid][E_PLAYER_ADMIN_ATTEMPTS] <= 0) {
             SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы исчерпали все попытки для ввода пароля и были кикнуты.");
             Kick(playerid);
-            return 1;
+            return true;
         }
 
         SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Пароли не совпадают. Повторите попытку.");
         admin_LoginDialog(playerid);
 
-        return 1;
+        return true;
     } 
 
     Iter_Add(AdminPlayers, playerid);
 
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно авторизовались в панели администратора.");
     
-    return 1;
+    return true;
 }
 
-stock admin_ShowPlayerHelpDialog(const playerid) 
+static stock admin_ShowPlayerHelpDialog(const playerid) 
 {
     new string[(12 + (- 2 + 1)) * MAX_ADMIN_LEVEL + 1];
 
@@ -861,15 +880,15 @@ stock admin_ShowPlayerHelpDialog(const playerid)
         !"Выбрать", !"Отмена"
    );
 #endif
-    return 1;
+    return true;
 }
 
-stock admin_HelpDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+static stock admin_HelpDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
 {
     #pragma unused listitem, dialogid, inputtext
     
     if (!response) {
-        return 0;
+        return true;
     }
 
     new
@@ -923,10 +942,10 @@ stock admin_HelpDialogResponse(playerid, dialogid = -1, response, listitem, inpu
         !"Закрыть", !"Назад"
    );
 #endif
-    return 1;
+    return true;
 }
 
-stock admin_HelpReturnDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+static stock admin_HelpReturnDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
 {
     #pragma unused listitem, dialogid, inputtext
 
@@ -934,10 +953,852 @@ stock admin_HelpReturnDialogResponse(playerid, dialogid = -1, response, listitem
         admin_ShowPlayerHelpDialog(playerid);
     }
 
-    return 1;
+    return true;
 }
 
-stock bool: admin_IsPlayerPasswordEqual(password[], const expected_hash[], salt[])
+static stock admin_TabPanelDialog(const playerid, const targetid)
+{
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = targetid;
+
+    new header_string[35 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 3) + 1];
+
+    format(header_string, sizeof header_string, "{FFFFFF}Действие для: {5D9978}%s[%d]", 
+        GetPlayerNameEx(targetid),
+        targetid
+    );
+
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid, 
+        DIALOG_ADMIN_TAB_PANEL, 
+        DIALOG_STYLE_LIST,
+        header_string,
+        !"- Показать статистику\n\
+        - Телепортироваться\n\
+        - Выкинуть с сервера\n\
+        - Заблокировать доступ к чату\n\
+        - Заблокировать аккаунт\n\
+        - Выдать предупреждение\n\
+        - Войти в режим наблюдения\n\
+        - Проверка на бесконечное здоровье\n\
+        - Дать пинка\n\
+        - Установить скин\n\
+        - Установить здоровье\n\
+        - Установить броню\n\
+        - Установить деньги\n\
+        - Установить очки\n\
+        - Установить интерьер\n\
+        - Установить виртуальный мир",
+        !"Выбрать", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid, 
+        Dialog:DIALOG_ADMIN_TAB_PANEL, 
+        DIALOG_STYLE_LIST,
+        header_string,
+        !"- Показать статистику\n\
+        - Телепортироваться\n\
+        - Выкинуть с сервера\n\
+        - Заблокировать доступ к чату\n\
+        - Заблокировать аккаунт\n\
+        - Выдать предупреждение\n\
+        - Войти в режим наблюдения\n\
+        - Проверка на бесконечное здоровье\n\
+        - Дать пинка\n\
+        - Установить скин\n\
+        - Установить здоровье\n\
+        - Установить броню\n\
+        - Установить деньги\n\
+        - Установить очки\n\
+        - Установить интерьер\n\
+        - Установить виртуальный мир",
+        !"Выбрать", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid, 
+        "DIALOG_ADMIN_TAB_PANEL", 
+        DIALOG_STYLE_LIST,
+        header_string,
+        !"- Показать статистику\n\
+        - Телепортироваться\n\
+        - Выкинуть с сервера\n\
+        - Заблокировать доступ к чату\n\
+        - Заблокировать аккаунт\n\
+        - Выдать предупреждение\n\
+        - Войти в режим наблюдения\n\
+        - Проверка на бесконечное здоровье\n\
+        - Дать пинка\n\
+        - Установить скин\n\
+        - Установить здоровье\n\
+        - Установить броню\n\
+        - Установить деньги\n\
+        - Установить очки\n\
+        - Установить интерьер\n\
+        - Установить виртуальный мир,
+        !"Выбрать", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+static stock admin_TabPanelDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+{
+    #pragma unused dialogid, inputtext
+
+    if (!response) {
+        g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+        return true;
+    }
+
+    new params_str[2];
+
+    valstr(params_str, g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL]);
+
+    switch (listitem) {
+        case 0: {
+            callcmd::show_stats(playerid, params_str);
+        }
+        case 1: {
+            callcmd::goto(playerid, params_str);
+        }
+        case 2: {
+            return admin_KickDialog(playerid);
+        }
+        case 3: {
+            return admin_MuteTimeDialog(playerid);
+        }
+        case 4: {
+            return admin_BanDialog(playerid);
+        }
+        case 5: {
+            return admin_WarnDialog(playerid);
+        }
+        case 6: {
+            callcmd::spectate(playerid, params_str);
+        }
+        case 7: {
+            callcmd::gm_test(playerid, params_str);
+        }
+        case 8: {
+            callcmd::slap(playerid, params_str);
+        }
+        case 9: {
+            return admin_SetSkinDialog(playerid);
+        }
+        case 10: {
+            return admin_SetHealthDialog(playerid);
+        }
+        case 11: {
+            return admin_SetArmourDialog(playerid);
+        }
+        case 12: {
+            return admin_SetMoneyDialog(playerid);
+        }
+        case 13: {
+            return admin_SetScoreDialog(playerid);
+        }
+        case 14: {
+            return admin_SetIntDialog(playerid);
+        }
+        case 15: {
+            return admin_SetWvDialog(playerid);
+        }
+    }
+
+    return true;
+}
+
+static stock admin_SetWvDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_VW, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Изменить виртуальный мир",
+        !"{FFFFFF}Введите ID виртуального мира:",
+        !"Изменить", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_VW, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Изменить виртуальный мир",
+        !"{FFFFFF}Введите ID виртуального мира:",
+        !"Изменить", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_VW", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Изменить виртуальный мир",
+        !"{FFFFFF}Введите ID виртуального мира:",
+        !"Изменить", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+static stock admin_SetVwDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetWvDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_vw(playerid, params_str);
+
+    return true;
+}
+
+static stock admin_SetIntDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_INT, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Изменить интерьер",
+        !"{FFFFFF}Введите ID интерьера:",
+        !"Изменить", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_INT, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Изменить интерьер",
+        !"{FFFFFF}Введите ID интерьера:",
+        !"Изменить", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_INT", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Изменить интерьер",
+        !"{FFFFFF}Введите ID интерьера:",
+        !"Изменить", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+static stock admin_SetIntDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetIntDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_int(playerid, params_str);
+
+    return true;
+}
+
+stock admin_KickDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_KICK, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выкинуть с сервера",
+        !"{FFFFFF}Введите причину кика:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_KICK, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выкинуть с сервера",
+        !"{FFFFFF}Введите причину кика:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_KICK", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выкинуть с сервера",
+        !"{FFFFFF}Введите причину кика:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_KickDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_KickDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::kick(playerid, params_str);
+
+    return true;
+}
+
+stock admin_MuteTimeDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_MUTE_TIME, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать молчанку",
+        !"{FFFFFF}Введите время молчанки:",
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_MUTE_TIME, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать молчанку",
+        !"{FFFFFF}Введите время молчанки:",
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_MUTE_TIME", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать молчанку",
+        !"{FFFFFF}Введите время молчанки:",
+        !"Далее", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_MuteTimeDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_MuteTimeDialog(playerid);
+    }
+
+    admin_MuteDialog(playerid);
+
+    return true;
+}
+
+stock admin_MuteDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_MUTE, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать молчанку",
+        !"{FFFFFF}Введите причину выдачи молчанки:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_MUTE, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать молчанку",
+        !"{FFFFFF}Введите причину выдачи молчанки:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_MUTE", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать молчанку",
+        !"{FFFFFF}Введите причину выдачи молчанки:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_MuteDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_MuteDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s %s", targetid, inputtext);
+
+    callcmd::mute(playerid, params_str);
+
+    return true;
+}
+
+stock admin_BanDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_BAN, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Заблокировать аккаунт",
+        !"{FFFFFF}Введите причину блокировки:",
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_BAN, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Заблокировать аккаунт",
+        !"{FFFFFF}Введите причину блокировки:",
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_BAN", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Заблокировать аккаунт",
+        !"{FFFFFF}Введите причину блокировки:",
+        !"Далее", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_BanDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_BanDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::ban(playerid, params_str);
+
+    return true;
+}
+
+stock admin_WarnDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_WARN, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать предупреждение",
+        !"{FFFFFF}Введите причину выдачи предупреждения:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_WARN, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Выдать предупреждение",
+        !"{FFFFFF}Введите причину выдачи предупреждения:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_BAN", 
+        DIALOG_ADMIN_WARN,
+        !"{5D9978}Выдать предупреждение",
+        !"{FFFFFF}Введите причину выдачи предупреждения:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_WarnDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_WarnDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::warn(playerid, params_str);
+
+    return true;
+}
+
+stock admin_SetSkinDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_SKIN, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить скин",
+        !"{FFFFFF}Введите ID скина, который вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_SKIN, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить скин",
+        !"{FFFFFF}Введите ID скина, который вы хотите установить:",
+        !"Принять", !"Закрыть"      
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_SKIN", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить скин",
+        !"{FFFFFF}Введите ID скина, который вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_SetSkinDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetSkinDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_skin(playerid, params_str);
+
+    return true;
+}
+
+stock admin_SetHealthDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_HEALTH, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить здоровье",
+        !"{FFFFFF}Введите количество здоровья, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_HEALTH, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить здоровье",
+        !"{FFFFFF}Введите количество здоровья, которое вы хотите установить:",
+        !"Принять", !"Закрыть"      
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_HEALTH", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить здоровье",
+        !"{FFFFFF}Введите количество здоровья, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_SetHealthDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetHealthDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_health(playerid, params_str);
+
+    return true;
+}
+
+stock admin_SetArmourDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_ARMOUR, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить броню",
+        !"{FFFFFF}Введите количество брони, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_ARMOUR, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить броню",
+        !"{FFFFFF}Введите количество брони, которое вы хотите установить:",
+        !"Принять", !"Закрыть"      
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_ARMOUR", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить броню",
+        !"{FFFFFF}Введите количество брони, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_SetArmourDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetArmourDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_armour(playerid, params_str);
+
+    return true;
+}
+
+stock admin_SetMoneyDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_MONEY, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить деньги",
+        !"{FFFFFF}Введите количество денег, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_MONEY, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить деньги",
+        !"{FFFFFF}Введите количество денег, которое вы хотите установить:",
+        !"Принять", !"Закрыть"      
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_MONEY", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить деньги",
+        !"{FFFFFF}Введите количество денег, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_SetMoneyDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetMoneyDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_money(playerid, params_str);
+
+    return true;
+}
+
+stock admin_SetScoreDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid,
+        DIALOG_ADMIN_SET_SCORE,
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить очки (уровень)",
+        !"{FFFFFF}Введите количество очков, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid,
+        Dialog:DIALOG_ADMIN_SET_SCORE, 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить очки (уровень)",
+        !"{FFFFFF}Введите количество очков, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid,
+        "DIALOG_ADMIN_SET_SCORE", 
+        DIALOG_STYLE_INPUT,
+        !"{5D9978}Установить очки (уровень)",
+        !"{FFFFFF}Введите количество очков, которое вы хотите установить:",
+        !"Принять", !"Закрыть"
+    );
+#endif
+    return true;
+}
+
+stock admin_SetScoreDialogResponse(playerid, dialogid = -1, response, listitem, const inputtext[])
+{
+    #pragma unused dialogid, listitem
+
+    if (!response) {
+        return true;
+    }
+
+    if (isnull(inputtext)) {
+        return admin_SetScoreDialog(playerid);
+    }
+
+    new 
+        params_str[145],
+        targetid = g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL];
+    
+    g_player_admin[playerid][E_PLAYER_ADMIN_TAB_PANEL] = NULL_g_player_admin[E_PLAYER_ADMIN_TAB_PANEL];
+
+    format(params_str, sizeof params_str, "%d %s", targetid, inputtext);
+
+    callcmd::set_score(playerid, params_str);
+
+    return true;
+}
+
+static stock bool: admin_IsPlayerPasswordEqual(password[], const expected_hash[], salt[])
 {
     new hash[MAX_ADMIN_PASSWORD_HASH_LENGTH + 1];
 
@@ -946,7 +1807,7 @@ stock bool: admin_IsPlayerPasswordEqual(password[], const expected_hash[], salt[
     return bool: (!strcmp(hash, expected_hash, false));
 }
 
-stock admin_GeneratePlayerPassword(const playerid, password[]) 
+static stock admin_GeneratePlayerPassword(const playerid, password[]) 
 {
 	static const random_letters[] = "TOBI8Uv4mZQ5QhuPWRWEtx2WIrqbkginKYfmGdGtyzQcIilwjfx3dkKGpg8RU5";
 
@@ -963,106 +1824,96 @@ stock admin_GeneratePlayerPassword(const playerid, password[])
         MAX_ADMIN_PASSWORD_HASH_LENGTH + 1
    );
 
-	return 1;
+	return true;
 }
 
-stock admin_GetPlayerAdminID(const playerid) 
+static stock admin_GetPlayerAdminID(const playerid) 
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_ID];
 }
 
-stock admin_SetPlayerAdminID(const playerid, const value) 
+static stock admin_SetPlayerAdminID(const playerid, const value) 
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_ID] = value;
 }
 
-stock admin_GetPlayerLevel(const playerid)
+static stock admin_GetPlayerLevel(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_LEVEL];
 }
 
-stock admin_SetPlayerLevel(const playerid, const value)
+static stock admin_SetPlayerLevel(const playerid, const value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_LEVEL] = value;
 }
 
-stock admin_GetPlayerPassword(const playerid, output_string[], const size = sizeof(output_string))
+static stock admin_GetPlayerPassword(const playerid, output_string[], const size = sizeof(output_string))
 {
     strcat((output_string[0] = EOS, output_string), g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD], size);
-
-    return 1;
 }
 
-stock admin_SetPlayerPassword(const playerid, const output_string[], const size = sizeof(output_string))
+static stock admin_SetPlayerPassword(const playerid, const output_string[], const size = sizeof(output_string))
 {
     strcat(g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD], output_string, size);
-
-    return 1;
 }
 
-stock admin_GetPlayerSalt(const playerid, output_string[], const size = sizeof(output_string))
+static stock admin_GetPlayerSalt(const playerid, output_string[], const size = sizeof(output_string))
 {
     strcat((output_string[0] = EOS, output_string), g_player_admin[playerid][E_PLAYER_ADMIN_SALT], size);
-
-    return 1;
 }
 
-stock admin_SetPlayerSalt(const playerid, const output_string[], const size = sizeof(output_string))
+static stock admin_SetPlayerSalt(const playerid, const output_string[], const size = sizeof(output_string))
 {
     strcat(g_player_admin[playerid][E_PLAYER_ADMIN_SALT], output_string, size);
-
-    return 1;
 }
 
-stock admin_GetPlayerPrefix(const playerid, output_string[], const size = sizeof(output_string))
+static stock admin_GetPlayerPrefix(const playerid, output_string[], const size = sizeof(output_string))
 {
     strcat((output_string[0] = EOS, output_string), g_player_admin[playerid][E_PLAYER_ADMIN_PREFIX], size);
 
-    return 1;
+    return true;
 }
 
-stock admin_SetPlayerPrefix(const playerid, const output_string[], const size = sizeof(output_string))
+static stock admin_SetPlayerPrefix(const playerid, const output_string[], const size = sizeof(output_string))
 {
     strcat(g_player_admin[playerid][E_PLAYER_ADMIN_PREFIX], output_string, size);
 
-    return 1;
+    return true;
 }
 
-stock admin_GetPlayerPrefixColor(const playerid, output_string[], const size = sizeof(output_string))
+static stock admin_GetPlayerPrefixColor(const playerid, output_string[], const size = sizeof(output_string))
 {
     strcat((output_string[0] = EOS, output_string), g_player_admin[playerid][E_PLAYER_ADMIN_PREFIX_COLOR], size);
 
-    return 1;
+    return true;
 }
 
-stock admin_SetPlayerPrefixColor(const playerid, const output_string[], const size = sizeof(output_string))
+static stock admin_SetPlayerPrefixColor(const playerid, const output_string[], const size = sizeof(output_string))
 {
     strcat(g_player_admin[playerid][E_PLAYER_ADMIN_PREFIX_COLOR], output_string, size);
-
-    return 1;
 }
 
-stock bool: admin_IsPlayerLogin(const playerid)
+static stock bool: admin_IsPlayerLogin(const playerid)
 {
     return bool: (Iter_Contains(AdminPlayers, playerid));
 }
 
-stock admin_GetPlayerLoginAttempts(const playerid, const value)
+static stock admin_GetPlayerLoginAttempts(const playerid, const value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_ATTEMPTS] = value;  
 }
 
-stock admin_SetPlayerLoginAttempts(const playerid, const value)
+static stock admin_SetPlayerLoginAttempts(const playerid, const value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_ATTEMPTS] = value;  
 }
 
-stock bool: admin_IsPlayerGodMode(const playerid)
+static stock bool: admin_IsPlayerGodMode(const playerid)
 {
     return (g_player_admin[playerid][E_PLAYER_ADMIN_GODMODE] != NULL_g_player_admin[E_PLAYER_ADMIN_GODMODE]);
 }
 
-stock admin_GetPlayerGodMode(const playerid)
+static stock admin_GetPlayerGodMode(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_GODMODE];
 }
@@ -1072,62 +1923,62 @@ stock admin_SetPlayerGodMode(const playerid, const bool: value)
     g_player_admin[playerid][E_PLAYER_ADMIN_GODMODE] = value;
 }
 
-stock admin_GetPlayerWarn(const playerid)
+static stock admin_GetPlayerWarn(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_WARNS];
 }
 
-stock admin_SetPlayerWarn(const playerid, const bool: value)
+static stock admin_SetPlayerWarn(const playerid, const bool: value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_WARNS] = value;
 }
 
-stock admin_GetPlayerSpectateID(const playerid)
+static stock admin_GetPlayerSpectateID(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_SPECTATE_ID];
 }
 
-stock admin_SetPlayerSpectateID(const playerid, const value)
+static stock admin_SetPlayerSpectateID(const playerid, const value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_SPECTATE_ID] = value;
 }
 
-stock admin_IsPlayerSpectate(const playerid)
+static stock admin_IsPlayerSpectate(const playerid)
 {
     return (g_player_admin[playerid][E_PLAYER_ADMIN_IS_SPECTATE] != NULL_g_player_admin[E_PLAYER_ADMIN_IS_SPECTATE]);
 }
 
-stock admin_GetPlayerSpectate(const playerid)
+static stock admin_GetPlayerSpectate(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_IS_SPECTATE];
 }
 
-stock admin_SetPlayerSpectate(const playerid, const bool: value)
+static stock admin_SetPlayerSpectate(const playerid, const bool: value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_IS_SPECTATE] = value;
 }
 
-stock admin_GetPlayerSpectateInt(const playerid)
+static stock admin_GetPlayerSpectateInt(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_INTERIOR];
 }
 
-stock admin_SetPlayerSpectateInt(const playerid, const value)
+static stock admin_SetPlayerSpectateInt(const playerid, const value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_INTERIOR] = value;
 }
 
-stock admin_GetPlayerSpectateWorldID(const playerid)
+static stock admin_GetPlayerSpectateWorldID(const playerid)
 {
     return g_player_admin[playerid][E_PLAYER_ADMIN_WORLD_ID];
 }
 
-stock admin_SetPlayerSpectateWorldID(const playerid, const value)
+static stock admin_SetPlayerSpectateWorldID(const playerid, const value)
 {
     g_player_admin[playerid][E_PLAYER_ADMIN_WORLD_ID] = value;
 }
 
-stock admin_SpectatePlayer(const playerid, const spectate_id)
+static stock admin_SpectatePlayer(const playerid, const spectate_id)
 {
     if (!IsPlayerInAnyVehicle(spectate_id)) {
         PlayerSpectatePlayer(playerid, spectate_id);
@@ -1158,10 +2009,10 @@ stock admin_SpectatePlayer(const playerid, const spectate_id)
 	SetPlayerInterior(playerid, GetPlayerInterior(spectate_id));
 	SetPlayerVirtualWorld(playerid, GetPlayerVirtualWorld(spectate_id));
 
-    return 1;
+    return true;
 }
 
-stock admin_UnSpectatePlayer(const playerid, const bool: default_pos = true)
+static stock admin_UnSpectatePlayer(const playerid, const bool: default_pos = true)
 {
     if (default_pos) {
         SetPlayerPos(
@@ -1189,10 +2040,10 @@ stock admin_UnSpectatePlayer(const playerid, const bool: default_pos = true)
     g_player_admin[playerid][E_PLAYER_ADMIN_POS_Y]       = NULL_g_player_admin[E_PLAYER_ADMIN_POS_Y];
     g_player_admin[playerid][E_PLAYER_ADMIN_POS_Z]       = NULL_g_player_admin[E_PLAYER_ADMIN_POS_Z];
 
-	return 1;
+	return true;
 }
 
-stock admin_UpdateSpectatePlayer(const playerid, const spectate_id)
+static stock admin_UpdateSpectatePlayer(const playerid, const spectate_id)
 {
     if (!IsPlayerInAnyVehicle(spectate_id)) {
         PlayerSpectatePlayer(playerid, spectate_id);
@@ -1207,10 +2058,10 @@ stock admin_UpdateSpectatePlayer(const playerid, const spectate_id)
 	SetPlayerInterior(playerid, GetPlayerInterior(spectate_id));
 	SetPlayerVirtualWorld(playerid, GetPlayerVirtualWorld(spectate_id));
 
-    return 1;
+    return true;
 }
 
-stock admin_ShowSpectatePanel(const playerid, bool: states, const spectate_id = INVALID_PLAYER_ID)
+static stock admin_ShowSpectatePanel(const playerid, bool: states, const spectate_id = INVALID_PLAYER_ID)
 {
 	if (states && spectate_id != INVALID_PLAYER_ID) {
         static const 
@@ -1290,10 +2141,10 @@ stock admin_ShowSpectatePanel(const playerid, bool: states, const spectate_id = 
 		TextDrawHideForPlayer(playerid, gtd_spectate_background);
 	}
 
-    return 1;
+    return true;
 }
 
-stock admin_UpdateSpectatePanel(const playerid, const spectate_id)
+static stock admin_UpdateSpectatePanel(const playerid, const spectate_id)
 {
     static const 
         dialog_string[] = 
@@ -1361,10 +2212,10 @@ stock admin_UpdateSpectatePanel(const playerid, const spectate_id)
     PlayerTextDrawSetString(playerid, ptd_spectate_name[playerid], fmt_header_string);
     PlayerTextDrawSetString(playerid, ptd_spectate_info[playerid], fmt_dialog_string);
 
-	return 1;
+	return true;
 }
 
-stock admin_LoadSpectatePlayerTD(const playerid)
+static stock admin_LoadSpectatePlayerTD(const playerid)
 {
 	ptd_spectate_name[playerid] = CreatePlayerTextDraw(playerid, 566.000000, 267.000000, !"_");
 	PlayerTextDrawLetterSize(playerid, ptd_spectate_name[playerid], 0.170000, 1.190000);
@@ -1387,7 +2238,7 @@ stock admin_LoadSpectatePlayerTD(const playerid)
 	PlayerTextDrawSetProportional(playerid, ptd_spectate_info[playerid], 1);
 }
 
-stock admin_LoadSpectateTD()
+static stock admin_LoadSpectateTD()
 {
 	g_spectate_menu = CreateMenu(!"Admin", 0, 5.0, 160.0, 50.0);
 	SetMenuColumnHeader(g_spectate_menu, 0, !"Menu");
@@ -1407,10 +2258,6 @@ stock admin_LoadSpectateTD()
 	TextDrawFont(gtd_spectate_background, 1);
 	TextDrawSetProportional(gtd_spectate_background, 1);
 }
-
-/*
-	auxiliary functions
-*/
 
 static stock bool: admin_IsPasswordCharsValid(const string[]) 
 {
@@ -1455,10 +2302,10 @@ public OnGameModeInit()
     
     SetTimer(!"@__OneHourUpdateTime", 360_0000, false);
 
-    #if defined adminsys_OnGameModeInit
-        return adminsys_OnGameModeInit();
+    #if defined admin_OnGameModeInit
+        return admin_OnGameModeInit();
     #else
-        return 1;
+        return true;
     #endif
 }
 #if defined _ALS_OnGameModeInit
@@ -1467,9 +2314,9 @@ public OnGameModeInit()
     #define _ALS_OnGameModeInit
 #endif
 
-#define OnGameModeInit adminsys_OnGameModeInit
-#if defined adminsys_OnGameModeInit
-    forward adminsys_OnGameModeInit();
+#define OnGameModeInit admin_OnGameModeInit
+#if defined admin_OnGameModeInit
+    forward admin_OnGameModeInit();
 #endif
 
 /*  
@@ -1485,10 +2332,10 @@ public OnPlayerConnect(playerid)
     admin_LoadPlayerUserID(playerid);
     admin_LoadSpectatePlayerTD(playerid);
 
-    #if defined adminsys_OnPlayerConnect
-        return adminsys_OnPlayerConnect(playerid);
+    #if defined admin_OnPlayerConnect
+        return admin_OnPlayerConnect(playerid);
     #else
-        return 1;
+        return true;
     #endif
 }
 #if defined _ALS_OnPlayerConnect
@@ -1497,9 +2344,9 @@ public OnPlayerConnect(playerid)
 	#define _ALS_OnPlayerConnect
 #endif
 
-#define OnPlayerConnect adminsys_OnPlayerConnect
-#if	defined adminsys_OnPlayerConnect
-	forward adminsys_OnPlayerConnect(playerid);
+#define OnPlayerConnect admin_OnPlayerConnect
+#if	defined admin_OnPlayerConnect
+	forward admin_OnPlayerConnect(playerid);
 #endif
 
 /* 
@@ -1510,10 +2357,10 @@ public OnPlayerDisconnect(playerid, reason)
 {
     admin_ClearPlayerAdminData(playerid);
 
-    #if defined adminsys_OnPlayerDisconnect
-        return adminsys_OnPlayerDisconnect(playerid, reason);
+    #if defined admin_OnPlayerDisconnect
+        return admin_OnPlayerDisconnect(playerid, reason);
     #else
-        return 1;
+        return true;
     #endif
 }
 #if defined _ALS_OnPlayerDisconnect
@@ -1522,12 +2369,13 @@ public OnPlayerDisconnect(playerid, reason)
     #define _ALS_OnPlayerDisconnect
 #endif
 
-#define OnPlayerDisconnect adminsys_OnPlayerDisconnect
-#if defined adminsys_OnPlayerDisconnect
-    forward adminsys_OnPlayerDisconnect(playerid, reason);
+#define OnPlayerDisconnect admin_OnPlayerDisconnect
+#if defined admin_OnPlayerDisconnect
+    forward admin_OnPlayerDisconnect(playerid, reason);
 #endif
 
 #if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    
     /* 
         hook OnDialogResponse
     */
@@ -1537,26 +2385,84 @@ public OnPlayerDisconnect(playerid, reason)
         switch (dialogid) {
             case DIALOG_ADMIN_REGISTER: {                
                 admin_RegisterDialogResponse(playerid, dialogid, response, listitem, inputtext);
-                return 1;
+                return true;
             }
             case DIALOG_ADMIN_LOGIN: {
                 admin_LoginDialogResponse(playerid, dialogid, response, listitem, inputtext);
-                return 1;
+                return true;
             }
             case DIALOG_ADMIN_HELP: {
                 admin_HelpDialogResponse(playerid, dialogid, response, listitem, inputtext);
-                return 1;
+                return true;
             }
             case DIALOG_ADMIN_HELP_RETURN: {
                 admin_HelpReturnDialogResponse(playerid, dialogid, response, listitem, inputtext);
-                return 1;
+                return true;
+            }
+            case DIALOG_ADMIN_TAB_PANEL: {
+                admin_TabPanelDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_VW: {
+                admin_SetVwDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_INT: {
+                admin_SetIntDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_KICK: {
+                admin_KickDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_MUTE_TIME: {
+                admin_MuteTimeDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_MUTE: {
+                admin_MuteDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_BAN: {
+                admin_BanDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_WARN:
+            {
+                admin_WarnDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_SKIN:
+            {
+                admin_SetSkinDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_HEALTH:
+            {
+                admin_SetHealthDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_ARMOUR:
+            {
+                admin_SetArmourDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_MONEY:
+            {
+                admin_SetMoneyDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_SET_SCORE:
+            {
+                admin_SetScoreDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
             }
         }
 
-        #if defined adminsys_OnDialogResponse
-            return adminsys_OnDialogResponse(playerid, dialogid, response, listitem, inputtext);
+        #if defined admin_OnDialogResponse
+            return admin_OnDialogResponse(playerid, dialogid, response, listitem, inputtext);
         #else
-            return 0;
+            return true;
         #endif
     }
     #if defined _ALS_OnDialogResponse
@@ -1565,52 +2471,182 @@ public OnPlayerDisconnect(playerid, reason)
         #define _ALS_OnDialogResponse
     #endif
 
-    #define OnDialogResponse adminsys_OnDialogResponse
-    #if defined adminsys_OnDialogResponse
-        forward adminsys_OnDialogResponse(playerid, dialogid, response, listitem, inputtext[]);
+    #define OnDialogResponse admin_OnDialogResponse
+    #if defined admin_OnDialogResponse
+        forward admin_OnDialogResponse(playerid, dialogid, response, listitem, inputtext[]);
     #endif
 
 #elseif defined _mdialog_included
     DialogResponse:DIALOG_ADMIN_REGISTER(playerid, response, listitem, inputtext[]) 
     {
         admin_RegisterDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
     }
     DialogResponse:DIALOG_ADMIN_LOGIN(playerid, response, listitem, inputtext[]) 
     {
         admin_LoginDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
     }
     DialogResponse:DIALOG_ADMIN_HELP(playerid, response, listitem, inputtext[])
     {
         admin_HelpDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
     }
     DialogResponse:DIALOG_ADMIN_HELP_RETURN(playerid, response, listitem, inputtext[])
     {
         admin_HelpReturnDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_TAB_PANEL(playerid, response, listitem, inputtext[])
+    {
+        admin_TabPanelDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_SET_VW(playerid, response, listitem, inputtext[])
+    {
+        admin_SetVwDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_SET_INT(playerid, response, listitem, inputtext[])
+    {
+        admin_SetIntDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_KICK(playerid, response, listitem, inputtext[])
+    {
+        admin_KickDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_MUTE_TIME(playerid, response, listitem, inputtext[])
+    {
+        admin_MuteTimeDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_MUTE(playerid, response, listitem, inputtext[])
+    {
+        admin_MuteDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_BAN(playerid, response, listitem, inputtext[])
+    {
+        admin_BanDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_WARN(playerid, response, listitem, inputtext[])
+    {
+        admin_WarnDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_WARN(playerid, response, listitem, inputtext[])
+    {
+        admin_SetSkinDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_SET_HEALTH(playerid, response, listitem, inputtext[])
+    {   
+        admin_SetHealthDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_SET_ARMOUR(playerid, response, listitem, inputtext[])
+    {
+        admin_SetArmourDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_SET_MONEY(playerid, response, listitem, inputtext[])
+    {
+        admin_SetMoneyDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_SET_SCORE(playerid, response, listitem, inputtext[])
+    {
+        admin_SetScoreDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
     }
 #elseif defined _TDW_DIALOG_INC_
     dialog DIALOG_ADMIN_REGISTER(playerid, response, listitem, inputtext[]) 
     {
         admin_RegisterDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
     }
     dialog DIALOG_ADMIN_LOGIN(playerid, response, listitem, inputtext[]) 
     {
         admin_LoginDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
     }
     dialog DIALOG_ADMIN_HELP(playerid, response, listitem, inputtext[]) 
     {
         admin_HelpDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
     }
     dialog DIALOG_ADMIN_HELP_RETURN(playerid, response, listitem, inputtext[]) 
     {
         admin_HelpReturnDialogResponse(playerid, _, response, listitem, inputtext);
-        return 1;
+        return true;
+    }
+    dialog DIALOG_ADMIN_TAB_PANEL(playerid, response, listitem, inputtext[])
+    {
+        admin_TabPanelDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_SET_VW(playerid, response, listitem, inputtext[])
+    {
+        admin_SetVwDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_SET_INT(playerid, response, listitem, inputtext[])
+    {
+        admin_SetIntDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_KICK(playerid, response, listitem, inputtext[])
+    {
+        admin_KickDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_MUTE_TIME(playerid, response, listitem, inputtext[])
+    {
+        admin_MuteTimeDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_MUTE(playerid, response, listitem, inputtext[])
+    {
+        admin_MuteDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+     DIALOG_ADMIN_BAN(playerid, response, listitem, inputtext[])
+    {
+        admin_BanDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_WARN(playerid, response, listitem, inputtext[])
+    {
+        admin_WarnDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_WARN(playerid, response, listitem, inputtext[])
+    {
+        admin_SetSkinDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_SET_HEALTH(playerid, response, listitem, inputtext[])
+    {   
+        admin_SetHealthDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_SET_ARMOUR(playerid, response, listitem, inputtext[])
+    {
+        admin_SetArmourDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_SET_MONEY(playerid, response, listitem, inputtext[])
+    {
+        admin_SetMoneyDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_SET_SCORE(playerid, response, listitem, inputtext[])
+    {
+        admin_SetScoreDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
     }
 #endif
 
@@ -1669,7 +2705,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
 				if (spectate_id == playerid) {
 					SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Данный игрок отсоединился от сервера.");
 					admin_UnSpectatePlayer(playerid);
-                    return 1;
+                    return true;
 				}
 							
 				admin_UpdateSpectatePlayer(playerid, spectate_id);
@@ -1681,10 +2717,10 @@ public OnPlayerSelectedMenuRow(playerid, row)
 		}
 	}
 	
-    #if defined adminsys_OnPlayerSelectMenuRow
-        return adminsys_OnPlayerSelectMenuRow(playerid, row);
+    #if defined admin_OnPlayerSelectMenuRow
+        return admin_OnPlayerSelectMenuRow(playerid, row);
     #else
-        return 1;
+        return true;
     #endif
 }
 #if defined _ALS_OnPlayerSelectedMenuRow
@@ -1693,9 +2729,69 @@ public OnPlayerSelectedMenuRow(playerid, row)
     #define _ALS_OnPlayerSelectedMenuRow
 #endif
 
-#define OnPlayerSelectedMenuRow adminsys_OnPlayerSelectMenuRow
-#if defined adminsys_OnPlayerSelectMenuRow
-    forward adminsys_OnPlayerSelectMenuRow(playerid, row);
+#define OnPlayerSelectedMenuRow admin_OnPlayerSelectMenuRow
+#if defined admin_OnPlayerSelectMenuRow
+    forward admin_OnPlayerSelectMenuRow(playerid, row);
+#endif
+
+/*
+    hook OnPlayerClickMap
+*/
+
+public OnPlayerClickMap(playerid, Float:fX, Float:fY, Float:fZ)
+{
+    if (admin_IsPlayerLogin(playerid) && !IsPlayerInAnyVehicle(playerid)) {
+        if (!g_is_admin_map_tp_enable) {
+            return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Телепорт по метке на карте выключен.");
+        }
+
+        SetPlayerPosFindZ(playerid, fX, fY, fZ);
+        SetPlayerInterior(playerid, 0);
+        SetPlayerVirtualWorld(playerid, 0);
+    }
+
+    #if defined admin_OnPlayerClickMap
+        return admin_OnPlayerClickMap(playerid, Float:fX, Float:fY, Float:fZ);
+    #else
+        return true;
+    #endif
+}
+#if defined _ALS_OnPlayerClickMap
+    #undef OnPlayerClickMap
+#else
+    #define _ALS_OnPlayerClickMap
+#endif
+
+#define OnPlayerClickMap admin_OnPlayerClickMap
+#if defined admin_OnPlayerClickMap
+    forward admin_OnPlayerClickMap(playerid, Float:fX, Float:fY, Float:fZ);
+#endif
+
+/*
+    hook OnPlayerClickPlayer 
+*/
+
+public OnPlayerClickPlayer(playerid, clickedplayerid, source)
+{
+    if (admin_IsPlayerLogin(playerid)) {
+        admin_TabPanelDialog(playerid, clickedplayerid);
+    }
+
+    #if defined admin_OnPlayerClickPlayer
+		return admin_OnPlayerClickPlayer(playerid, clickedplayerid, source);
+	#else
+		return false;
+	#endif
+}
+#if defined _ALS_OnPlayerClickPlayer
+	#undef OnPlayerClickPlayer
+#else
+	#define _ALS_OnPlayerClickPlayer
+#endif
+
+#define OnPlayerClickPlayer admin_OnPlayerClickPlayer
+#if defined admin_OnPlayerClickPlayer
+	forward admin_OnPlayerClickPlayer(playerid, clickedplayerid, source);
 #endif
 
 /*  
@@ -1708,7 +2804,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return 0;
+        return true;
     }
 
     new user_id;
@@ -1719,7 +2815,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
 
     admin_LoadPlayerData(playerid);
 
-    return 1;
+    return true;
 }
 
 @__OnPlayerLoadAdminData(playerid);
@@ -1728,7 +2824,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return 0;
+        return true;
     }
 
     cache_get_value_name_int(0, !"id", g_player_admin[playerid][E_PLAYER_ADMIN_ID]);
@@ -1775,14 +2871,14 @@ public OnPlayerSelectedMenuRow(playerid, row)
         SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, fmt_message);
     } 
 
-    return 1;
+    return true;
 }
 
 @__OnPlayerLoadAdminID(playerid);
 @__OnPlayerLoadAdminID(playerid)
 {
     admin_SetPlayerAdminID(playerid, cache_insert_id());
-    return 1;
+    return true;
 }
 
 @__OnPlayerLoadOfflineAdmins(playerid);
@@ -1791,7 +2887,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return 0;
+        return true;
     }
     
     new
@@ -1844,7 +2940,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
         !"Закрыть", !""
    );
 #endif
-    return 1;
+    return true;
 }
 
 @__OnPlayerCreateAdminOffline(playerid, name[]);
@@ -1887,7 +2983,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
         !"Вы успешно создали нового администратора в режиме (OFFLINE)."
    );
 
-    return 1;
+    return true;
 }
 
 @__OnPlayerEditAdminOffline(playerid, name[], level);
@@ -1922,7 +3018,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
         !"Вы успешно обновили уровень администратора в режиме (OFFLINE)."
    );
 
-    return 1;
+    return true;
 }
 
 @__OnPlayerRemoveAdminOffline(playerid, name[]);
@@ -1956,7 +3052,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
         !"Вы успешно сняли администратора в режиме (OFFLINE)."
    );
 
-    return 1;
+    return true;
 }
 
 @__OnPlayerGodMode(const playerid, const targetid, Float: health);
@@ -2018,7 +3114,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
         !"Закрыть", ""
    );
 #endif
-    return 1;
+    return true;
 }
 
 @__FixPlayerKickWithDelay(playerid);
@@ -2026,7 +3122,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
 {
     Kick(playerid);
 
-    return 1;
+    return true;
 }
 
 @__OneHourUpdateTime();
@@ -2044,7 +3140,7 @@ public OnPlayerSelectedMenuRow(playerid, row)
 
     SetTimer(!"@__OneHourUpdateTime", 360_0000, false);
 
-    return 1;
+    return true;
 }
 
 /*  
@@ -2072,7 +3168,7 @@ CMD:aduty(playerid)
         admin_LoginDialog(playerid);
     }
 
-    return 1;
+    return true;
 }
 
 CMD:ahelp(playerid) 
@@ -2086,7 +3182,7 @@ CMD:ahelp(playerid)
     }
 
     admin_ShowPlayerHelpDialog(playerid);
-    return 1;
+    return true;
 }
 
 CMD:create_admin(playerid, const params[])
@@ -2099,7 +3195,7 @@ CMD:create_admin(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, "Используйте: /create_admin [ID игрока / часть NickName]");
@@ -2122,7 +3218,7 @@ CMD:create_admin(playerid, const params[])
     }
 
     admin_PlayerCreate(targetid);
-	return 1;
+	return true;
 }
 
 CMD:edit_admin(playerid, const params[])
@@ -2136,7 +3232,7 @@ CMD:edit_admin(playerid, const params[])
     }
 
     new 
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         level;
 
     if (sscanf(params, !"ud", targetid, level)) {
@@ -2166,7 +3262,7 @@ CMD:edit_admin(playerid, const params[])
     admin_SetPlayerLevel(playerid, level);
     
     admin_PlayerUpdate(targetid);
-    return 1;
+    return true;
 }
 
 CMD:remove_admin(playerid, const params[])
@@ -2179,7 +3275,7 @@ CMD:remove_admin(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, "Используйте: /remove_admin [ID игрока / часть NickName]");
@@ -2198,7 +3294,7 @@ CMD:remove_admin(playerid, const params[])
     }
 
     admin_PlayerRemove(targetid);
-    return 1;
+    return true;
 }
 
 CMD:admin(playerid, const params[])
@@ -2221,10 +3317,10 @@ CMD:admin(playerid, const params[])
             GetPlayerNameEx(playerid),
             playerid,
             params
-   );
+    );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
 
-	return 1;
+	return true;
 }
 
 CMD:admins(playerid) 
@@ -2286,7 +3382,7 @@ CMD:admins(playerid)
 		!"Закрыть", !""
 	);
 #endif
-	return 1;
+	return true;
 }
 
 CMD:off_admins(playerid) 
@@ -2304,7 +3400,7 @@ CMD:off_admins(playerid)
             !"d", 
             playerid
    );
-    return 1;
+    return true;
 }
 
 #define MAX_PLAYER_NAME_LENGTH 24
@@ -2330,7 +3426,7 @@ CMD:off_create_admin(playerid, const params[])
     }
 
     admin_PlayerCreateOffline(playerid, target_name);
-    return 1;
+    return true;
 }
 
 CMD:off_edit_admin(playerid, const params[]) 
@@ -2358,7 +3454,7 @@ CMD:off_edit_admin(playerid, const params[])
     }
 
     admin_PlayerEditOffline(playerid, target_name, level);
-    return 1;
+    return true;
 }
 
 CMD:off_remove_admin(playerid, const params[]) 
@@ -2382,7 +3478,7 @@ CMD:off_remove_admin(playerid, const params[])
     }
 
     admin_PlayerRemoveOffline(playerid, target_name);
-    return 1;
+    return true;
 }
 
 #undef MAX_PLAYER_NAME_LENGTH
@@ -2398,7 +3494,7 @@ CMD:give_weapon(playerid, const params[])
     }
 
     new 
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         weaponid,
         ammo;
     
@@ -2438,12 +3534,12 @@ CMD:give_weapon(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:slap(playerid, const params[])
 {
-	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_4)) {
+	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_2)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
     }
     
@@ -2451,10 +3547,10 @@ CMD:slap(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
-    if (sscanf(params, !"us[128]", targetid, params)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /slap [ID игрока / часть NickName] [Причина]");
+    if (sscanf(params, !"u", targetid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /slap [ID игрока / часть NickName]");
     }
 
     if (targetid == INVALID_PLAYER_ID) {
@@ -2494,7 +3590,7 @@ CMD:slap(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:goto(playerid, const params[])
@@ -2507,7 +3603,7 @@ CMD:goto(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /goto [ID игрока / часть NickName]");
@@ -2550,7 +3646,7 @@ CMD:goto(playerid, const params[])
    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:gethere(playerid, const params[])
@@ -2563,7 +3659,7 @@ CMD:gethere(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /gethere [ID игрока / часть NickName]");
@@ -2612,10 +3708,10 @@ CMD:gethere(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
     
-	return 1;
+	return true;
 }
 
-CMD:setint(playerid, const params[])
+CMD:set_int(playerid, const params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_4)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -2626,11 +3722,11 @@ CMD:setint(playerid, const params[])
     }
 
     new 
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         interiorid;
 
     if (sscanf(params, !"ud", targetid, interiorid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /setint [ID игрока / часть NickName] [ID интерьера]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /set_int [ID игрока / часть NickName] [ID интерьера]");
     }
 
 	SetPlayerInterior(targetid, interiorid);
@@ -2641,20 +3737,20 @@ CMD:setint(playerid, const params[])
             GetPlayerNameEx(targetid),
             targetid,
             interiorid
-   );
+    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
 
 	format(string, sizeof string, "Администратор %s[%d] установил Вам интерьер ID [%d].", 
             GetPlayerNameEx(playerid),
             playerid,
             interiorid
-   );
+    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
-CMD:setvw(playerid, const params[])
+CMD:set_vw(playerid, const params[])
 {
 	if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_4)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -2665,11 +3761,11 @@ CMD:setvw(playerid, const params[])
     }
 
     new 
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         worldid;
 
     if (sscanf(params, !"ud", targetid, worldid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /setvw [ID игрока / часть NickName] [Виртуальный мир]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /set_vw [ID игрока / часть NickName] [Виртуальный мир]");
     }
 
 	SetPlayerVirtualWorld(targetid, worldid);
@@ -2680,17 +3776,17 @@ CMD:setvw(playerid, const params[])
             GetPlayerNameEx(targetid),
             targetid,
             worldid
-   );
+    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	format(string, sizeof string, "Администратор %s[%d] установил Вам виртуальный мир [%d].", 
+    format(string, sizeof string, "Администратор %s[%d] установил Вам виртуальный мир [%d].", 
             GetPlayerNameEx(playerid),
             playerid,
             worldid
-   );
+    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:set_weather(playerid, const params[])
@@ -2730,7 +3826,7 @@ CMD:set_weather(playerid, const params[])
    );
     SendClientMessageToAll(HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:set_time(playerid, const params[])
@@ -2770,7 +3866,7 @@ CMD:set_time(playerid, const params[])
    );
     SendClientMessageToAll(HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:asay(playerid, const params[]) 
@@ -2796,7 +3892,7 @@ CMD:asay(playerid, const params[])
    );
     SendClientMessageToAll(HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:answer(playerid, const params[])
@@ -2809,7 +3905,7 @@ CMD:answer(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-	new targetid = INVALID_PLAYER_ID;
+	new targetid;
 
     if (sscanf(params, !"us[128]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /answer [ID игрока / часть NickName] [Текст]");
@@ -2841,7 +3937,7 @@ CMD:answer(playerid, const params[])
    );
 	SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:cc(playerid, const params[])
@@ -2884,7 +3980,7 @@ CMD:cc(playerid, const params[])
    );
     SendClientMessageToAll(HEX_COLOR_ADMIN_CHAT, fmt_string);
 
-    return 1;
+    return true;
 }
 
 CMD:goto_pos(playerid, const params[])
@@ -2917,7 +4013,7 @@ CMD:goto_pos(playerid, const params[])
     SetPlayerVirtualWorld(playerid, 0);
     SetPlayerInterior(playerid, 0);
 	
-    return 1;
+    return true;
 }
 
 CMD:eject(playerid, const const params[])
@@ -2930,7 +4026,7 @@ CMD:eject(playerid, const const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /eject [ID игрока / часть NickName]");
@@ -2960,7 +4056,7 @@ CMD:eject(playerid, const const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:freeze(playerid, const params[]) 
@@ -2973,7 +4069,7 @@ CMD:freeze(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /freeze [ID игрока / часть NickName]");
@@ -2999,7 +4095,7 @@ CMD:freeze(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:unfreeze(playerid, const params[]) 
@@ -3012,7 +4108,7 @@ CMD:unfreeze(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /unfreeze [ID игрока / часть NickName]");
@@ -3038,7 +4134,7 @@ CMD:unfreeze(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:weapon(playerid, const params[])
@@ -3053,7 +4149,7 @@ CMD:weapon(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /weapon [ID игрока / часть NickName]");
@@ -3126,7 +4222,7 @@ CMD:weapon(playerid, const params[])
    );
 #endif
 #undef MAX_PLAYER_WEAPON_SLOT
-    return 1;
+    return true;
 }
 
 CMD:veh(playerid, const params[])
@@ -3197,7 +4293,7 @@ CMD:veh(playerid, const params[])
    );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
 
-    return 1;
+    return true;
 }
 
 CMD:spawn_veh(playerid, const params[])
@@ -3229,7 +4325,7 @@ CMD:spawn_veh(playerid, const params[])
    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
     
-    return 1;
+    return true;
 }
 
 CMD:repair_veh(playerid, const params[])
@@ -3261,7 +4357,7 @@ CMD:repair_veh(playerid, const params[])
    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
     
-    return 1;
+    return true;
 }
 
 CMD:goto_veh(playerid, const params[])
@@ -3300,7 +4396,7 @@ CMD:goto_veh(playerid, const params[])
    );
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:set_skin(playerid, const params[])
@@ -3314,11 +4410,11 @@ CMD:set_skin(playerid, const params[])
     }
 
     new
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         modelid;
 
 	if (sscanf(params, !"ud", targetid, modelid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /set_skin [ID (1-311)]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /set_skin [ID игрока / часть NickName] [ID (1-311)]");
     }
 
     if (targetid == INVALID_PLAYER_ID) {
@@ -3349,7 +4445,7 @@ CMD:set_skin(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-	return 1;
+	return true;
 }
 
 CMD:set_score(playerid, const params[])
@@ -3363,7 +4459,7 @@ CMD:set_score(playerid, const params[])
     }
 
     new
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         score;
 
 	if (sscanf(params, !"ud", targetid, score)) {
@@ -3392,7 +4488,7 @@ CMD:set_score(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:set_health(playerid, const params[])
@@ -3406,7 +4502,7 @@ CMD:set_health(playerid, const params[])
     }
 
     new
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         Float: health;
 
 	if (sscanf(params, !"uf", targetid, health)) {
@@ -3435,7 +4531,7 @@ CMD:set_health(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:set_armour(playerid, const params[])
@@ -3449,7 +4545,7 @@ CMD:set_armour(playerid, const params[])
     }
 
     new
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         Float: armour;
 
 	if (sscanf(params, !"uf", targetid, armour)) {
@@ -3478,7 +4574,7 @@ CMD:set_armour(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:set_money(playerid, const params[])
@@ -3492,7 +4588,7 @@ CMD:set_money(playerid, const params[])
     }
 
     new
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         money;
 
     if (sscanf(params, !"ud", targetid, money)) {
@@ -3522,12 +4618,12 @@ CMD:set_money(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 CMD:show_stats(playerid, const params[])
 {
-    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_2)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
     }
 
@@ -3535,7 +4631,7 @@ CMD:show_stats(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
 	if (sscanf(params, !"u", targetid)) {        
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /show_stats [ID игрока / часть NickName]");
@@ -3616,7 +4712,7 @@ CMD:show_stats(playerid, const params[])
         !"Закрыть", !""
    );
 #endif
-    return 1;
+    return true;
 }
 
 CMD:aspawn(playerid, const params[])
@@ -3629,7 +4725,7 @@ CMD:aspawn(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
 	if (sscanf(params, !"u", targetid)) {        
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /aspawn [ID игрока / часть NickName]");
@@ -3659,7 +4755,7 @@ CMD:aspawn(playerid, const params[])
    );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
     
-    return 1;
+    return true;
 }
 
 CMD:dveh(playerid, const params[])
@@ -3696,7 +4792,7 @@ CMD:dveh(playerid, const params[])
    );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
 
-    return 1;
+    return true;
 }
 
 CMD:set_prefix(playerid, params[])
@@ -3709,7 +4805,7 @@ CMD:set_prefix(playerid, params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
     
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"us[" #MAX_ADMIN_PREFIX_LENGTH "]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /set_prefix [ID игрока / часть NickName] [Наименование]");
@@ -3743,7 +4839,7 @@ CMD:set_prefix(playerid, params[])
    );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
 
-    return 1;
+    return true;
 }
 
 CMD:prefix_color(playerid, params[])
@@ -3756,7 +4852,7 @@ CMD:prefix_color(playerid, params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"us[" #MAX_ADMIN_PREFIX_COLOR_LENGTH "]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /prefix_color [ID игрока / часть NickName] [Цвет]");
@@ -3790,7 +4886,7 @@ CMD:prefix_color(playerid, params[])
    );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
 
-    return 1;
+    return true;
 }
 
 cmd:gm_test(playerid, const params[])
@@ -3803,7 +4899,7 @@ cmd:gm_test(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /gm_test [ID игрока / часть NickName]");
@@ -3842,7 +4938,7 @@ cmd:gm_test(playerid, const params[])
                 !"ddf", playerid, targetid, current_health
    );
 
-    return 1;
+    return true;
 }
 
 cmd:kick(playerid, const params[])
@@ -3855,7 +4951,7 @@ cmd:kick(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"us[128]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /kick [ID игрока / часть NickName] [Причина]");
@@ -3885,14 +4981,14 @@ cmd:kick(playerid, const params[])
             GetPlayerNameEx(targetid),
             targetid,
             params
-   );
+    );
     SendClientMessageToAll(HEX_COLOR_ADMIN_CHAT, string);
 
     SetTimerEx(!"@__FixPlayerKickWithDelay", 500, false, !"d", targetid);
 
     CallRemoteFunction(!"OnPlayerKick", !"dd", targetid, playerid);
 
-    return 1;
+    return true;
 }
 
 cmd:mute(playerid, const params[])
@@ -3906,7 +5002,7 @@ cmd:mute(playerid, const params[])
     }
 
     new 
-        targetid = INVALID_PLAYER_ID,
+        targetid,
         time;
 
     if (sscanf(params, !"uds[128]", targetid, time, params)) {
@@ -3951,7 +5047,7 @@ cmd:mute(playerid, const params[])
 
     CallRemoteFunction(!"OnPlayerMute", !"ddd", targetid, playerid, time);
 
-    return 1;
+    return true;
 }
 
 cmd:unmute(playerid, const params[])
@@ -3964,7 +5060,7 @@ cmd:unmute(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /unmute [ID игрока / часть NickName]");
@@ -3994,7 +5090,7 @@ cmd:unmute(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 cmd:warn(playerid, const params[])
@@ -4007,7 +5103,7 @@ cmd:warn(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"us[128]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /warn [ID игрока / часть NickName] [Причина]");
@@ -4049,7 +5145,7 @@ cmd:warn(playerid, const params[])
                         targetid, playerid, g_player_admin[targetid][E_PLAYER_ADMIN_WARNS]
    );
 
-    return 1;
+    return true;
 }
 
 cmd:unwarn(playerid, const params[])
@@ -4062,7 +5158,7 @@ cmd:unwarn(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /unwarn [ID игрока / часть NickName]");
@@ -4094,7 +5190,7 @@ cmd:unwarn(playerid, const params[])
    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
-    return 1;
+    return true;
 }
 
 cmd:ban(playerid, const params[])
@@ -4107,7 +5203,7 @@ cmd:ban(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"us[128]", targetid, params)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /ban [ID игрока / часть NickName] [Причина]");
@@ -4137,18 +5233,18 @@ cmd:ban(playerid, const params[])
     SendClientMessageToAll(HEX_COLOR_ADMIN_CHAT, string);
 
     format(string, sizeof string, "Администратор %s[%d] заблокировал Вас. Причина: %s",
-            GetPlayerNameEx(playerid),
-            playerid,
-            params
-   );
+        GetPlayerNameEx(playerid),
+        playerid,
+        params
+    );
     SendClientMessage(targetid, HEX_COLOR_ADMIN_SUCCESS, string);
 
     CallRemoteFunction(!"OnPlayerBan", !"dd", targetid, playerid);
 
-    return 1;
+    return true;
 }
 
-cmd:adminstats(playerid, const params[])
+cmd:admin_stats(playerid, const params[])
 {
     if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
@@ -4158,10 +5254,10 @@ cmd:adminstats(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /adminstats [ID игрока / часть NickName]");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /admin_stats [ID игрока / часть NickName]");
     }
 
     if (targetid == INVALID_PLAYER_ID) {
@@ -4217,7 +5313,7 @@ cmd:adminstats(playerid, const params[])
         !"Закрыть", !""
    );
 #endif
-    return 1;
+    return true;
 }
 
 cmd:spectate(playerid, const params[])
@@ -4230,7 +5326,7 @@ cmd:spectate(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
     }
 
-    new targetid = INVALID_PLAYER_ID;
+    new targetid;
 
     if (sscanf(params, !"u", targetid)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /spectate [ID игрока / часть NickName]");
@@ -4250,7 +5346,7 @@ cmd:spectate(playerid, const params[])
 
     admin_SpectatePlayer(playerid, targetid);
 
-    return 1;
+    return true;
 }
 
 cmd:unspectate(playerid)
@@ -4265,5 +5361,29 @@ cmd:unspectate(playerid)
 
     admin_UnSpectatePlayer(playerid);
 
-    return 1;
+    return true;
+}
+
+cmd:admin_tp(playerid, const params[])
+{
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_6)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
+    }
+
+    g_is_admin_map_tp_enable = !g_is_admin_map_tp_enable;
+
+    new string[51 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 3) + (- 2 + 8) + 1];
+
+    format(string, sizeof string, "Администратор %s[%d] %s телепорт по метке на карте.",
+        GetPlayerNameEx(playerid),
+        playerid,
+        (g_is_admin_map_tp_enable) ? ("включил") : ("выключил")
+    );
+    admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
+
+    return true;
 }
