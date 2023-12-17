@@ -412,229 +412,207 @@ static stock admin_Init()
         printf("[Debug]: таблица `"DB_USERS_ADMINS"` инициализирована за %d мс.", 
             GetTickCount() - tick
         );
-    } 
+    }
+    
     cache_delete(cache_id);
 
     return mysql_errno() == 0;
 }
 
 static stock admin_SavePlayerDataEx(const playerid, const column_name[], const column_value[])
-{
-    static const query[] = 
-    "\
-        UPDATE `"DB_USERS_ADMINS"` SET `%e`='%e' WHERE id=%d \
-    ";
-    
-    new fmt_query[sizeof(query) + (- 2 + 20) + (- 2 + MAX_ADMIN_PASSWORD_HASH_LENGTH) + (- 2 + 11)];
+{    
+    new query_string[135 + (- 2 + 15) + (- 2 + MAX_ADMIN_PASSWORD_HASH_LENGTH) + (- 2 + 11) + 1];
 
-    mysql_format(
-            g_admin_sql_handle, 
-            fmt_query, 
-            sizeof(fmt_query), 
-            query, 
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string, 
+        "\
+            UPDATE \
+                `"DB_USERS_ADMINS"` \
+            SET \
+                `%e`='%e' \
+            WHERE \
+                id=%d \
+        ",
             column_name,
             column_value,
             admin_GetPlayerAdminID(playerid)
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, "", "");
 
     return mysql_errno() == 0;
 }
 
-static stock admin_LoadPlayerUserID(playerid)
+static stock admin_LoadPlayerUserID(const playerid)
 {
-    static const query[] = "SELECT u.id FROM `"DB_USERS"` u WHERE u.name='%e' LIMIT 1";
-	
-    new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
+    new query_string[140 + (- 2 + MAX_PLAYER_NAME) + 1];
 
-    mysql_format(
-            g_admin_sql_handle,
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            SELECT \
+                u.id \
+            FROM \
+                `"DB_USERS"` u \
+            WHERE \
+                u.name='%e' LIMIT 1 \
+        ",
             GetPlayerNameEx(playerid)
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerLoadUserID", !"d", playerid);
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, !"@__OnPlayerLoadUserID", !"d", playerid);
 
     return mysql_errno() == 0;
 }
 
 static stock admin_LoadPlayerData(const playerid)
 {
-	static const query[] = 
-	"\
-        SELECT * FROM `"DB_USERS_ADMINS"` a \
-        LEFT JOIN `"DB_USERS"` u ON u.id=a.user_id \
-        WHERE u.id=%d \
-	";
-	
-    new fmt_query[sizeof(query) + (- 2 + 11)];
+    new query_string[145 + (- 2 + 11) + 1];
 
-    mysql_format(
-            g_admin_sql_handle,
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            SELECT * FROM \
+                `"DB_USERS_ADMINS"` a \
+            LEFT JOIN \
+                `"DB_USERS"` u \
+            ON \
+                u.id=a.user_id \
+            WHERE \
+                u.id=%d \
+        ",
             GetPlayerUserID(playerid)
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerLoadAdminData", !"d", playerid);
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, !"@__OnPlayerLoadAdminData", !"d", playerid);
     
     return mysql_errno() == 0;
 }
 
 static stock admin_PlayerCreate(const playerid)
 {
-    static const query[] = 
-    "\
-        INSERT INTO `"DB_USERS_ADMINS"` \
-        	(name, level, reg_ip) \
-        VALUES \
-        	('%e', %d, INET_ATON('%e')) \
-    ";
-
-    new 
-        fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1) + (- 2 + 16)],
+    new
+        query_string[136 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1) + (- 2 + 16) + 1],
         ip_adress[16];
 
     GetPlayerIp(playerid, ip_adress, sizeof ip_adress);
 
     admin_SetPlayerLevel(playerid, MIN_ADMIN_LEVEL);
 
-    mysql_format(
-            g_admin_sql_handle, 
-            fmt_query, 
-            sizeof(fmt_query), 
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string, 
+        "\
+            INSERT INTO `"DB_USERS_ADMINS"` \
+                (name, level, reg_ip) \
+            VALUES \
+                ('%e', %d, INET_ATON('%e')) \
+        ",
             GetPlayerNameEx(playerid),
             MIN_ADMIN_LEVEL,
             ip_adress
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerLoadAdminID", !"d", playerid);
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, !"@__OnPlayerLoadAdminID", !"d", playerid);
 
-    SendClientMessage(
-        playerid, 
-        HEX_COLOR_ADMIN_SUCCESS, 
-        !"Для регистрации пароля администратора, используйте команду - /aduty."
-   );
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Для регистрации пароля администратора, используйте - /aduty.");
 
     return mysql_errno() == 0;
 }
 
 static stock admin_PlayerUpdate(const playerid)
-{
-	static const query[] = 
-    "\
-        UPDATE `"DB_USERS_ADMINS"` SET level=%d WHERE id=%d \
-    ";
-    
-    new fmt_query[sizeof(query) + (- 2 + 1) + (- 2 + 11)];
+{    
+    new query_string[133 + (- 2 + 1) + (- 2 + 11) + 1];
 
-    format(
-            fmt_query, 
-            sizeof(fmt_query), 
-            query,
+    format(query_string, sizeof query_string, 
+        "\
+            UPDATE \
+                `"DB_USERS_ADMINS"` \
+            SET \
+                level=%d \
+            WHERE \
+                id=%d \
+        ",
             admin_GetPlayerLevel(playerid),
             admin_GetPlayerAdminID(playerid)
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, "", "");
 
-    SendClientMessage(
-        playerid, 
-        HEX_COLOR_ADMIN_ERROR, 
-        !"Ваш уровень администратора был изменён."
-   );
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Ваш уровень администратора был изменён.");
     
 	return mysql_errno() == 0;
 }
 
 static stock admin_PlayerRemove(const playerid)
 {
-    static const query[] = 
-    "\
-        DELETE FROM `"DB_USERS_ADMINS"` WHERE id=%d \
-    ";
-    
-    new fmt_query[sizeof(query) + (- 2 + 11)];
+    new query_string[94 + (- 2 + 11) + 1];
 
-    format(
-            fmt_query, 
-            sizeof(fmt_query), 
-            query,
+    format(query_string, sizeof query_string, 
+        "\
+            DELETE FROM \
+                `"DB_USERS_ADMINS"` \
+            WHERE \
+                id=%d \
+        ",
             admin_GetPlayerAdminID(playerid)
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, "", "");
 
     admin_ClearPlayerAdminData(playerid);
     admin_ClearPlayerData(playerid);
 
-    SendClientMessage(
-        playerid, 
-        HEX_COLOR_ADMIN_ERROR, 
-        !"Вы были сняты с должности администратора."
-   );
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы были сняты с поста администратора.");
     
     return mysql_errno() == 0;
 }
 
 static stock admin_PlayerCreateOffline(const playerid, const name[])
 {
-	static const query[] =
-    "\
-    	SELECT u.id, u.name FROM `"DB_USERS"` u WHERE name='%e' LIMIT 1 \
-    ";
+	new query_string[145 + (- 2 + MAX_PLAYER_NAME) + 1];
 
-	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
-
-    mysql_format(
-            g_admin_sql_handle,
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            SELECT \
+                u.id, u.name \
+            FROM \
+                `"DB_USERS"` u \
+            WHERE \
+                name='%e' LIMIT 1 \
+        ",
             name
-   );
-	mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerCreateAdminOffline", !"ds", playerid, name);
+    );
+	mysql_tquery(g_admin_sql_handle, query_string, !"@__OnPlayerCreateAdminOffline", !"ds", playerid, name);
 	
 	return mysql_errno() == 0;
 }
 
 static stock admin_PlayerEditOffline(const playerid, const name[], const level)
 {
-	static const query[] =
-    "\
-    	SELECT u.name FROM `"DB_USERS_ADMINS"` u WHERE name='%e' LIMIT 1 \
-    ";
+	new query_string[146 + (- 2 + MAX_PLAYER_NAME) + 1];
 
-	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
-
-    mysql_format(
-            g_admin_sql_handle,
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            SELECT \
+                u.name \
+            FROM \
+                `"DB_USERS_ADMINS"` u \
+            WHERE \
+                name='%e' LIMIT 1 \
+        ",
             name
-   );
-	mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerEditAdminOffline", !"dsd", playerid, name, level);
+    );
+	mysql_tquery(g_admin_sql_handle, query_string, !"@__OnPlayerEditAdminOffline", !"dsd", playerid, name, level);
 	
 	return mysql_errno() == 0;
 }
 
 static stock admin_PlayerRemoveOffline(const playerid, const name[])
 {
-    static const query[] =
-    "\
-    	SELECT u.name FROM `"DB_USERS_ADMINS"` u WHERE name='%e' LIMIT 1 \
-    ";
+	new query_string[148 + (- 2 + MAX_PLAYER_NAME) + 1];
 
-	new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
-
-    mysql_format(
-            g_admin_sql_handle,
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            SELECT \
+                u.name \
+            FROM \
+                `"DB_USERS_ADMINS"` u \
+            WHERE \
+                name='%e' LIMIT 1 \
+        ",
             name
-   );
-	mysql_tquery(g_admin_sql_handle, fmt_query, !"@__OnPlayerRemoveAdminOffline", !"ds", playerid, name);
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, !"@__OnPlayerRemoveAdminOffline", !"ds", playerid, name);
 
     return mysql_errno() == 0;
 }
@@ -2896,7 +2874,7 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
         tmp_level;
 
     for (new idx = 0; idx < row_count; ++idx) {
-        cache_get_value_name(idx, !"name", tmp_name);
+        cache_get_value_name(idx, !"name", tmp_name, sizeof tmp_name);
 
         if (admin_GetPlayerOnlineByID(tmp_name) != INVALID_PLAYER_ID) {
             continue;
@@ -2952,36 +2930,26 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Аккаунт игрока не зарегистрирован в базе данных.");
     }
     
-    new user_id;
+    new 
+        query_string[125 + (- 2 + 11) + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1) + 1],
+        user_id;
     
     cache_get_value_name_int(0, !"id", user_id);
 
-    static const query[] = 
-    "\
-        INSERT INTO `"DB_USERS_ADMINS"` \
-            (user_id, name, level) \
-        VALUES \
-            (%d, '%e', %d) \
-    ";
-    
-    new fmt_query[sizeof(query) + (- 2 + 11) + (- 2 + MAX_PLAYER_NAME) + (- 2 + 1)];
-    
-    mysql_format(
-            g_admin_sql_handle, 
-            fmt_query, 
-            sizeof(fmt_query), 
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            INSERT INTO `"DB_USERS_ADMINS"` \
+                (user_id, name, level) \
+            VALUES \
+                (%d, '%e', %d) \
+        ",
             user_id,
             name,
             MIN_ADMIN_LEVEL
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, "", "");
     
-    SendClientMessage(
-        playerid, 
-        HEX_COLOR_ADMIN_SUCCESS, 
-        !"Вы успешно создали нового администратора в режиме (OFFLINE)."
-   );
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно создали нового администратора в режиме (OFFLINE).");
 
     return true;
 }
@@ -2992,31 +2960,25 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
     new row_count = cache_num_rows();
 
     if (!row_count) {
-        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок не является активным администратором.");
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок не является администратором.");
     }
 
-    static const query[] = 
-    "\
-        UPDATE `"DB_USERS_ADMINS"` SET level=%d WHERE name='%e' LIMIT 1 \
-    ";
-    
-    new fmt_query[sizeof(query) + (- 2 + 1) + (- 2 + MAX_PLAYER_NAME)];
+    new query_string[127 + (- 2 + 1) + (- 2 + MAX_PLAYER_NAME) + 1];
 
-    mysql_format(
-            g_admin_sql_handle, 
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            UPDATE \
+                `"DB_USERS_ADMINS"` \
+            SET \
+                level=%d \
+            WHERE name='%e' LIMIT 1 \
+        ",
             level,
             name
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, "", "");
 
-    SendClientMessage(
-        playerid, 
-        HEX_COLOR_ADMIN_SUCCESS, 
-        !"Вы успешно обновили уровень администратора в режиме (OFFLINE)."
-   );
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно изменили уровень администратора в режиме (OFFLINE).");
 
     return true;
 }
@@ -3030,27 +2992,20 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Игрок не является активным администратором.");
     }
 
-    static const query[] = 
-    "\
-        DELETE FROM `"DB_USERS_ADMINS"` WHERE name='%e' LIMIT 1 \
-    ";
-    
-    new fmt_query[sizeof(query) + (- 2 + MAX_PLAYER_NAME)];
+    new query_string[105 + (- 2 + MAX_PLAYER_NAME) + 1];
 
-    mysql_format(
-            g_admin_sql_handle, 
-            fmt_query, 
-            sizeof(fmt_query),
-            query,
+    mysql_format(g_admin_sql_handle, query_string, sizeof query_string,
+        "\
+            DELETE FROM \
+                `"DB_USERS_ADMINS"` \
+            WHERE \
+                name='%e' LIMIT 1 \
+        ",
             name
-   );
-    mysql_tquery(g_admin_sql_handle, fmt_query, "", "");
+    );
+    mysql_tquery(g_admin_sql_handle, query_string, "", "");
 
-    SendClientMessage(
-        playerid, 
-        HEX_COLOR_ADMIN_SUCCESS, 
-        !"Вы успешно сняли администратора в режиме (OFFLINE)."
-   );
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно сняли администратора в режиме (OFFLINE).");
 
     return true;
 }
