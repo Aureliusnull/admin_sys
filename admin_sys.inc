@@ -24,7 +24,7 @@
     definitions
 */
 
-#define ADMINSYS_VERSION    "0.6"
+#define ADMINSYS_VERSION    "0.7"
 
 #if defined cache_get_field_content
     #define ADMIN_MYSQL_TAG:
@@ -117,7 +117,7 @@
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_COUNT
-    #define MAX_ADMIN_COMMAND_COUNT 52
+    #define MAX_ADMIN_COMMAND_COUNT 53
 #endif
 
 #if !defined MAX_ADMIN_COMMAND_NAME_LENGTH
@@ -148,6 +148,26 @@
     #define MIN_ADMIN_MUTE_TIME 1
 #endif
 
+#if !defined MAX_ADMIN_REPORT_COUNT 
+    #define MAX_ADMIN_REPORT_COUNT 25
+#endif
+
+#if !defined MAX_ADMIN_REPORT_MESSAGE_LENGTH
+    #define MAX_ADMIN_REPORT_MESSAGE_LENGTH 60
+#endif
+
+#if !defined MAX_ADMIN_REPORT_MESSAGE_DELAY
+    #define MAX_ADMIN_REPORT_MESSAGE_DELAY 60
+#endif
+
+#if !defined MAX_ADMIN_REPORT_LISTITEM
+	#define MAX_ADMIN_REPORT_LISTITEM MAX_ADMIN_REPORT_COUNT
+#endif
+
+#if !defined MIN_ADMIN_REPORT_LEVEL
+    #define MIN_ADMIN_REPORT_LEVEL 0
+#endif
+
 /*
     enums
 */
@@ -176,7 +196,10 @@ _ADMINSYS_STATIC_ENUM enum {
     DIALOG_ADMIN_SET_MONEY,
     DIALOG_ADMIN_SET_SCORE,
     DIALOG_ADMIN_SET_VW,
-    DIALOG_ADMIN_SET_INT
+    DIALOG_ADMIN_SET_INT,
+    DIALOG_ADMIN_REPORT_LIST,
+    DIALOG_ADMIN_REPORT_INFO,
+    DIALOG_ADMIN_REPORT_MENU
 }
 #endif
 
@@ -217,7 +240,8 @@ _ADMINSYS_STATIC_ENUM enum E_PLAYER_ADMIN_STRUCT {
 
 _ADMINSYS_STATIC_ENUM enum E_PLAYER_DATA_STRUCT {
     E_PLAYER_DATA_ID,
-    E_PLAYER_DATA_NAME[MAX_PLAYER_NAME + 1]
+    E_PLAYER_DATA_NAME[MAX_PLAYER_NAME + 1],
+    E_PLAYER_REPORT_DELAY
 };
 
 _ADMINSYS_STATIC_ENUM enum E_ADMIN_COMMAND_STRUCT {
@@ -227,22 +251,30 @@ _ADMINSYS_STATIC_ENUM enum E_ADMIN_COMMAND_STRUCT {
     E_ADMIN_COMMAND_DESC[MAX_ADMIN_COMMAND_DESC_LENGTH + 1]
 };
 
+_ADMINSYS_STATIC_ENUM enum E_ADMIN_REPORT_STRUCT {
+    E_ADMIN_REPORT_ID,
+    E_ADMIN_REPORT_MESSAGE[MAX_ADMIN_REPORT_MESSAGE_LENGTH + 1],
+    E_ADMIN_REPORT_UNIX_TIME
+};
+
 /*
     vars
 */
 
-static 
-    Iterator: AdminPlayers<MAX_ADMINS_COUNT>,
+static
+    Iterator: iAdminReport<MAX_ADMIN_REPORT_COUNT>,
+    Iterator: iAdmins<MAX_ADMINS_COUNT>,
     ADMIN_MYSQL_TAG:g_admin_sql_handle,
 	Menu: g_spectate_menu,
 	Text: gtd_spectate_background,
 	PlayerText: ptd_spectate_name[MAX_PLAYERS] = { PlayerText:0xFFFF, ... },
 	PlayerText: ptd_spectate_info[MAX_PLAYERS] = { PlayerText:0xFFFF, ... },
-    bool: g_is_admin_map_tp_enable;
+    bool: g_is_admin_map_tp_enable,
+    pVar__AdminReport_IDX[] = !"pVar__AdminReport_IDX",
 
-static 
     g_player_admin[MAX_PLAYERS][E_PLAYER_ADMIN_STRUCT],
-    g_player_data[MAX_PLAYERS][E_PLAYER_DATA_STRUCT];
+    g_player_data[MAX_PLAYERS][E_PLAYER_DATA_STRUCT],
+    g_admin_report[MAX_ADMIN_REPORT_COUNT][E_ADMIN_REPORT_STRUCT];
 
 static const 
     NULL_g_player_admin[E_PLAYER_ADMIN_STRUCT] = {
@@ -272,10 +304,16 @@ static const
     NULL_g_player_data[E_PLAYER_DATA_STRUCT] = {
     0,
     EOS,
+},
+    NULL_g_admin_report[E_ADMIN_REPORT_STRUCT] = {
+    INVALID_PLAYER_ID,
+    EOS,
+    -1
 };
 
 static const g_admin_command[MAX_ADMIN_COMMAND_COUNT][E_ADMIN_COMMAND_STRUCT] = {
 	{ADMIN_COMMAND_LEVEL_1, "/admin", "Текстовое сообщение", "Написать в чат всем администраторам"},
+	{ADMIN_COMMAND_LEVEL_1, "/show_reports", "Аргументы отсутствуют", "Показать активный список репортов"},
 	{ADMIN_COMMAND_LEVEL_1, "/aduty", "Аргументы отсутствуют", "Авторизация/Регистрация в панели администратора"},
 	{ADMIN_COMMAND_LEVEL_1, "/ahelp", "Аргументы отсутствуют", "Список команд администора с подробным описанием"},
     {ADMIN_COMMAND_LEVEL_1, "/answer", "ID игрока / часть NickName | Текст", "Ответить игроку"},
@@ -625,7 +663,7 @@ static stock admin_ClearPlayerData(const playerid)
 static stock admin_ClearPlayerAdminData(const playerid)
 {
     if (admin_IsPlayerLogin(playerid)) {
-        Iter_Remove(AdminPlayers, playerid);
+        Iter_Remove(iAdmins, playerid);
 
         g_player_admin[playerid] = NULL_g_player_admin;
     }
@@ -640,7 +678,7 @@ static stock bool: admin_IsPlayerValid(const playerid)
 
 static stock admin_SendMessage(const color, const message[])
 {
-    foreach (new idx : AdminPlayers) {
+    foreach (new idx : iAdmins) {
         SendClientMessage(idx, color, message);
     }
 
@@ -733,7 +771,7 @@ static stock admin_RegisterDialogResponse(playerid, dialogid = -1, response, lis
     admin_SavePlayerDataEx(playerid, "password", g_player_admin[playerid][E_PLAYER_ADMIN_PASSWORD]);
     admin_SavePlayerDataEx(playerid, "salt", g_player_admin[playerid][E_PLAYER_ADMIN_SALT]);
 
-    Iter_Add(AdminPlayers, playerid);
+    Iter_Add(iAdmins, playerid);
 
     new string[53 + (- 2 + MAX_ADMIN_PASSWORD_LENGTH) + 1];
 
@@ -812,7 +850,7 @@ static stock admin_LoginDialogResponse(playerid, dialogid = -1, response, listit
         return true;
     } 
 
-    Iter_Add(AdminPlayers, playerid);
+    Iter_Add(iAdmins, playerid);
 
     SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Вы успешно авторизовались в панели администратора.");
     
@@ -1873,7 +1911,7 @@ static stock admin_SetPlayerPrefixColor(const playerid, const output_string[], c
 
 static stock bool: admin_IsPlayerLogin(const playerid)
 {
-    return bool: (Iter_Contains(AdminPlayers, playerid));
+    return bool: (Iter_Contains(iAdmins, playerid));
 }
 
 static stock admin_GetPlayerLoginAttempts(const playerid, const value)
@@ -2255,13 +2293,300 @@ static stock bool: admin_IsPasswordCharsValid(const string[])
 
 static stock admin_GetPlayerOnlineByID(const player_name[])
 {
-    foreach (new idx : AdminPlayers) {
+    foreach (new idx : iAdmins) {
         if (!strcmp(GetPlayerNameEx(idx), player_name)) {
             return idx;
         }
     }
 
     return INVALID_PLAYER_ID;
+}
+
+static stock admin_SetReportID(const idx, const value)
+{
+	g_admin_report[idx][E_ADMIN_REPORT_ID] = value;
+}
+
+static stock admin_GetReportID(const idx)
+{
+	return g_admin_report[idx][E_ADMIN_REPORT_ID];
+}
+
+static stock admin_SetReportTime(const idx, const value)
+{
+	g_admin_report[idx][E_ADMIN_REPORT_UNIX_TIME] = value;
+}
+
+static stock admin_GetReportTime(const idx)
+{
+	return g_admin_report[idx][E_ADMIN_REPORT_UNIX_TIME];
+}
+
+static stock admin_SetReportMessage(const idx, const message[])
+{
+    strmid(g_admin_report[idx][E_ADMIN_REPORT_MESSAGE], message, 0, MAX_ADMIN_REPORT_MESSAGE_LENGTH);
+
+    return true;
+}
+
+static stock admin_IsReportEmpty(const idx)
+{
+    return (isnull(g_admin_report[idx][E_ADMIN_REPORT_MESSAGE])) ? (0) : (1); 
+}
+
+static stock admin_GetPlayerReporDelay(const playerid)
+{
+    return g_player_data[playerid][E_PLAYER_REPORT_DELAY];
+}
+
+static stock admin_SetPlayerReportDelay(const playerid, const value)
+{
+    g_player_data[playerid][E_PLAYER_REPORT_DELAY] = value;
+}
+
+static stock admin_ReportCreate(const idx, &playerid, &time, const message[])
+{
+	admin_SetReportID(idx, playerid);
+	admin_SetReportTime(idx, time);
+    admin_SetReportMessage(idx, message);
+
+    Iter_Add(iAdminReport, idx);
+
+    return true;
+}
+
+static stock admin_ReportDelete(const idx)
+{
+    g_admin_report[idx][E_ADMIN_REPORT_ID] = NULL_g_admin_report[E_ADMIN_REPORT_ID];
+    g_admin_report[idx][E_ADMIN_REPORT_UNIX_TIME] = NULL_g_admin_report[E_ADMIN_REPORT_UNIX_TIME];
+    g_admin_report[idx][E_ADMIN_REPORT_MESSAGE][0] = NULL_g_admin_report[E_ADMIN_REPORT_MESSAGE];
+
+    Iter_Remove(iAdminReport, idx);
+    
+    return true;
+}
+
+static stock admin_ReportAnswer(const playerid, const idx, const message[])
+{
+    new 
+        string[32 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 3) + (- 2 + MAX_ADMIN_REPORT_MESSAGE_LENGTH) + 1],
+        id = admin_GetReportID(idx);
+
+    format(string, sizeof string, "%s[%d] ответил на Ваш репорт: %s",
+        GetPlayerNameEx(playerid),
+        playerid,
+        message
+    );
+    SendClientMessage(id, HEX_COLOR_ADMIN_SUCCESS, string);
+    
+    return true;
+}
+
+static stock admin_ReportListDialog(const playerid)
+{
+    new 
+        string[(18 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 3) + (- 2 + 11)) * MAX_ADMIN_REPORT_COUNT + 1] = "Игрок\t\tВремя\n",
+        id,
+        time;
+
+    foreach (new i : iAdminReport) {
+        if (!admin_IsReportEmpty(i)) {
+            continue;
+        }
+
+        id = admin_GetReportID(i);
+        time = admin_GetReportTime(i);
+
+        format(string, sizeof string, "%s%s[%d]\t\t%d мин\n", 
+            string,
+            GetPlayerNameEx(id),
+            id,
+            (gettime() - time) / 60
+        );
+    }
+    
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid, 
+        DIALOG_ADMIN_REPORT_LIST, 
+        DIALOG_STYLE_TABLIST_HEADERS,
+        !"{FFFFFF}Список репортов",
+        string,
+        !"Выбрать", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid, 
+        Dialog:DIALOG_ADMIN_REPORT_LIST, 
+        DIALOG_STYLE_TABLIST_HEADERS,
+        !"{FFFFFF}Список репортов",
+        string,
+        !"Выбрать", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid, 
+        "DIALOG_ADMIN_REPORT_LIST", 
+        DIALOG_STYLE_TABLIST_HEADERS,
+        !"{FFFFFF}Список репортов",
+        string,
+        !"Выбрать", !"Закрыть"
+   );
+#endif
+
+    return true;
+}
+
+static stock admin_ReportListDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+{
+    #pragma unused dialogid, inputtext
+
+	if (!response) {
+        return true;
+    }
+    
+    if (!admin_IsReportEmpty(listitem)) {
+    	return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Данный репорт был удалён из списка.");
+	}
+	
+	SetPVarInt(playerid, pVar__AdminReport_IDX, listitem);
+
+    admin_ReportInfoDialog(playerid);
+
+    return true;
+}
+
+static stock admin_ReportInfoDialog(const playerid)
+{
+    new 
+        string[80 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 11) + (- 2 + MAX_ADMIN_REPORT_MESSAGE_LENGTH) + 1],
+        idx = GetPVarInt(playerid, pVar__AdminReport_IDX),
+        id = admin_GetReportID(idx),
+        time = admin_GetReportTime(idx);
+
+    format(string, sizeof string, 
+        "{FFFFFF}Репорт от: %s[%d]\n\
+        Время: %d мин.\n\
+        Текст: %s",
+        GetPlayerNameEx(id),
+        id,
+        (gettime() - time) / 60,
+        g_admin_report[idx][E_ADMIN_REPORT_MESSAGE]
+    );
+
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid, 
+        DIALOG_ADMIN_REPORT_INFO, 
+        DIALOG_STYLE_MSGBOX,
+        !"{FFFFFF}Информация о репорте",
+        string,
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid, 
+        Dialog:D_ADMIN_REPORT_INFO,  
+        DIALOG_STYLE_MSGBOX,
+        !"{FFFFFF}Информация о репорте",
+        string,
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid, 
+        "DIALOG_ADMIN_REPORT_INFO", 
+        DIALOG_STYLE_MSGBOX,
+        !"{FFFFFF}Информация о репорте",
+        string,
+        !"Далее", !"Закрыть"
+   );
+#endif
+
+    return true;
+}
+
+static stock admin_ReportInfoDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+{
+    #pragma unused dialogid, listitem, inputtext
+
+	if (!response) {
+        DeletePVar(playerid, pVar__AdminReport_IDX);
+        return true;
+    }
+
+    admin_ReportMenuDialog(playerid);
+
+    return true;
+}
+
+static stock admin_ReportMenuDialog(const playerid)
+{
+#if !defined _mdialog_included && !defined _TDW_DIALOG_INC_
+    ShowPlayerDialog(
+        playerid, 
+        DIALOG_ADMIN_REPORT_MENU, 
+        DIALOG_STYLE_LIST,
+        " ",
+        "Ответить\n\
+        Удалить",
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _mdialog_included
+    Dialog_Open(
+        playerid, 
+        Dialog:DIALOG_ADMIN_REPORT_MENU,  
+        DIALOG_STYLE_LIST,
+        " ",
+        "Ответить\n\
+        Удалить",
+        !"Далее", !"Закрыть"
+    );
+#elseif defined _TDW_DIALOG_INC_
+    OpenDialog(
+        playerid, 
+        "DIALOG_ADMIN_REPORT_MENU", 
+        DIALOG_STYLE_LIST,
+        " ",
+        "Ответить\n\
+        Удалить",
+        !"Далее", !"Закрыть"
+   );
+#endif
+
+    return true;
+}
+
+static stock admin_ReportMenuDialogResponse(playerid, dialogid = -1, response, listitem, inputtext[])
+{
+    #pragma unused dialogid, inputtext
+
+	if (!response) {
+        DeletePVar(playerid, pVar__AdminReport_IDX);
+        return true;
+    }
+
+    new idx = GetPVarInt(playerid, pVar__AdminReport_IDX);
+    
+    DeletePVar(playerid, pVar__AdminReport_IDX);
+    
+    if (!admin_IsReportEmpty(idx)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Данный репорт был удалён из списка.");
+    }
+
+    switch (listitem) {
+        case 0: {
+            admin_ReportAnswer(playerid, idx, inputtext);
+            admin_ReportDelete(idx);
+            return true;
+        }
+        case 1: {
+            admin_ReportDelete(idx);
+            return true;
+        }
+    }
+
+    return true;
 }
 
 /*  
@@ -2435,6 +2760,21 @@ public OnPlayerDisconnect(playerid, reason)
                 admin_SetScoreDialogResponse(playerid, dialogid, response, listitem, inputtext);
                 return true;
             }
+            case DIALOG_ADMIN_REPORT_LIST: 
+            {
+            	admin_ReportListDialogResponse(playerid, dialogid, response, listitem, inputtext);
+            	return true;
+            }
+            case DIALOG_ADMIN_REPORT_INFO:
+            {
+                admin_ReportInfoDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
+            case DIALOG_ADMIN_REPORT_MENU:
+            {
+                admin_ReportMenuDialogResponse(playerid, dialogid, response, listitem, inputtext);
+                return true;
+            }
         }
 
         #if defined admin_OnDialogResponse
@@ -2540,6 +2880,21 @@ public OnPlayerDisconnect(playerid, reason)
         admin_SetScoreDialogResponse(playerid, _, response, listitem, inputtext);
         return true;
     }
+    DialogResponse:DIALOG_ADMIN_REPORT_LIST(playerid, response, listitem, inputtext[]) 
+    {
+        admin_ReportListDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_REPORT_INFO(playerid, response, listitem, inputtext[]) 
+    {
+        admin_ReportInfoDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    DialogResponse:DIALOG_ADMIN_REPORT_MENU(playerid, response, listitem, inputtext[]) 
+    {
+        admin_ReportMenuDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
 #elseif defined _TDW_DIALOG_INC_
     dialog DIALOG_ADMIN_REGISTER(playerid, response, listitem, inputtext[]) 
     {
@@ -2624,6 +2979,21 @@ public OnPlayerDisconnect(playerid, reason)
     dialog DIALOG_ADMIN_SET_SCORE(playerid, response, listitem, inputtext[])
     {
         admin_SetScoreDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_REPORT_LIST(playerid, response, listitem, inputtext[]) 
+    {
+        admin_ReportListDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_REPORT_INFO(playerid, response, listitem, inputtext[]) 
+    {
+        admin_ReportInfoDialogResponse(playerid, _, response, listitem, inputtext);
+        return true;
+    }
+    dialog DIALOG_ADMIN_REPORT_MENU(playerid, response, listitem, inputtext[]) 
+    {
+        admin_ReportMenuDialogResponse(playerid, _, response, listitem, inputtext);
         return true;
     }
 #endif
@@ -3083,7 +3453,7 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
 @__OneHourUpdateTime();
 @__OneHourUpdateTime()
 {
-    foreach (new i : AdminPlayers) {
+    foreach (new i : iAdmins) {
         if (!admin_IsPlayerLogin(i)) {
             continue;
         }
@@ -3108,12 +3478,12 @@ CMD:aduty(playerid)
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не обладаете правами администратора.");
     }
 
-    if (Iter_Count(AdminPlayers) > MAX_ADMINS_COUNT) {
+    if (Iter_Count(iAdmins) > MAX_ADMINS_COUNT) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Превышен лимит администраторов на сервере.");
     }
 
     if (admin_IsPlayerLogin(playerid)) {
-        Iter_Remove(AdminPlayers, playerid);
+        Iter_Remove(iAdmins, playerid);
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы вышли из панели администратора.");
     }
 
@@ -3168,7 +3538,7 @@ CMD:create_admin(playerid, const params[])
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Указанный игрок уже администратор.");
     }
 
-    if (Iter_Count(AdminPlayers) > MAX_ADMINS_COUNT) {
+    if (Iter_Count(iAdmins) > MAX_ADMINS_COUNT) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Превышен лимит администраторов на сервере.");
     }
 
@@ -3292,7 +3662,7 @@ CMD:admins(playerid)
         dialog_string[27 + ((- 2 + MAX_PLAYER_NAME) + (- 2 + 3) + (- 2 + 1)) * MAX_ADMINS_COUNT + 1] = "Ник\tУровень\n",
         header_string[41 + (- 2 + 2) + 1];
 
-	foreach (new idx : AdminPlayers) {
+	foreach (new idx : iAdmins) {
         format(dialog_string, sizeof dialog_string, "%s{5D9978}%s[%d]\t{FFFFFF}%d\n",
                 dialog_string,
                 GetPlayerNameEx(idx),
@@ -3302,10 +3672,10 @@ CMD:admins(playerid)
     }
 
 	format(header_string, sizeof header_string, "{BA2821}Администраторы в сети: {FFFFFF}%d",
-            Iter_Count(AdminPlayers)
+            Iter_Count(iAdmins)
    );
 
-    if (!Iter_Count(AdminPlayers)) {
+    if (!Iter_Count(iAdmins)) {
         return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"В данный момент нет администраторов в сети.");
     }
 
@@ -5340,5 +5710,63 @@ cmd:admin_tp(playerid, const params[])
     );
     admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
 
+    return true;
+}
+
+cmd:show_reports(playerid)
+{
+    if (admin_GetAccessCommand(playerid, ADMIN_COMMAND_LEVEL_1)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"У Вас недостаточно прав для использования команды.");
+    }
+
+    if (!admin_IsPlayerLogin(playerid)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Вы не авторизованы как администратор.");
+    }
+
+    if (!Iter_Count(iAdminReport)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Список репортов пуст.");
+    }
+
+    admin_ReportListDialog(playerid);
+
+    return true;
+}
+
+cmd:report(playerid, const params[])
+{
+    new free_idx = Iter_Free(iAdminReport);
+
+    if (free_idx == ITER_NONE) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Cписок репортов переполнен.");
+    }
+
+    if (admin_IsReportEmpty(free_idx)) {
+        return true;
+    }
+
+    if (admin_GetPlayerReporDelay(playerid) >= gettime()) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_ERROR, !"Отправлять репорт можно раз в "#MAX_ADMIN_REPORT_MESSAGE_DELAY" минут.");
+    }
+
+    if (isnull(params)) {
+        return SendClientMessage(playerid, HEX_COLOR_ADMIN_DEFAULT, !"Используйте: /report [Сообщение]");
+    }
+    
+    new 
+        string[27 + (- 2 + MAX_PLAYER_NAME) + (- 2 + 3) + (- 2 + MAX_ADMIN_REPORT_MESSAGE_LENGTH) + 1],
+        unix_time = gettime();
+
+    admin_SetPlayerReportDelay(playerid, unix_time + MAX_ADMIN_REPORT_MESSAGE_DELAY);
+    admin_ReportCreate(free_idx, playerid, unix_time, params);
+
+    format(string, sizeof string, "Репорт от игрока %s[%d]: %s",
+        GetPlayerNameEx(playerid),
+        playerid,
+        params
+    );
+    admin_SendMessage(HEX_COLOR_ADMIN_CHAT, string);
+
+    SendClientMessage(playerid, HEX_COLOR_ADMIN_SUCCESS, !"Ваш репорт успешно добавлен в очередь.");
+    
     return true;
 }
